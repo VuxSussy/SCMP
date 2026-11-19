@@ -258,12 +258,15 @@ $(BUILD_DIR)/scmp-spotify: tools/scmp-spotify
 $(BUILD_DIR)/$(TARGET): $(OBJECTS) $(SCMP_LINK_INPUT)
 	$(CXX) $(CXX_FLAGS) $(LDFLAGS) $(SCMP_LINK_FLAGS) $(LIB_PATH) -o $@ $(OBJECTS) $(LIBS)
 
+# Current GoogleTest releases require C++17. Only the test sources use it.
+TEST_CXX_FLAGS = $(filter-out -std=c++14,$(CXX_FLAGS)) -std=c++17
+
 $(BUILD_TEST_DIR)/%.o: %.cpp $(HEADERS) Makefile
 	mkdir -p $(BUILD_TEST_DIR)
-	$(CXX) $(CXX_FLAGS) $(LD_FLAGS) $(INCLUDE_PATH) $(TEST_INCLUDE_PATH) -c $< -o $@
+	$(CXX) $(TEST_CXX_FLAGS) $(LD_FLAGS) $(INCLUDE_PATH) $(TEST_INCLUDE_PATH) -c $< -o $@
 
 $(TEST_TARGET): $(OBJECTS) $(TEST_OBJECTS)
-	$(CXX) $(CXX_FLAGS) $(LDFLAGS) $(INCLUDE_PATH) $(TEST_INCLUDE_PATH) $(LIB_PATH) -o $(BUILD_TEST_DIR)/$(TEST_TARGET) $(TEST_OBJECTS) $(LIBS) $(TEST_LIBS)
+	$(CXX) $(TEST_CXX_FLAGS) $(LDFLAGS) $(INCLUDE_PATH) $(TEST_INCLUDE_PATH) $(LIB_PATH) -o $(BUILD_TEST_DIR)/$(TEST_TARGET) $(TEST_OBJECTS) $(LIBS) $(TEST_LIBS)
 	$(BUILD_TEST_DIR)/$(TEST_TARGET)
 
 $(BUILD_PERF_TEST_DIR)/%.o: %.cpp $(HEADERS) Makefile
