@@ -46,6 +46,7 @@ class StudioView
 #endif
     size_t m_queue_start = 0;
     bool m_stage_visible = false;
+    bool m_full_stage = false;
 };
 }
 

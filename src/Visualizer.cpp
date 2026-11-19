@@ -274,7 +274,6 @@ std::string scmp::Visualizer::run(const std::string &config_path, const std::str
         {
             if (lava) lava->reset_pointer();
             current = (current + 1) % m_transformers.size();
-            view = ViewMode::Visualizer;
             last_rotation = Clock::now();
             writer.set_surface(nullptr);
         }
@@ -408,27 +407,25 @@ std::string scmp::Visualizer::run(const std::string &config_path, const std::str
         const auto input = using_local_audio ? "Local track" : system_is_mac ? "Mac system audio" :
             system_source.empty() ? "System audio" : "MPD FIFO";
 
-        bool signal_present = false;
-        if (view == ViewMode::Visualizer)
+        const bool full_view = view == ViewMode::Visualizer;
+        auto *source = using_local_audio ? static_cast<AudioSource *>(player) :
+                       full_view ? system_audio.get() : nullptr;
+        const bool frame_available = source && source->read(pcm.data(), static_cast<uint32_t>(pcm.size()));
+        const bool audible = frame_available && std::any_of(pcm.begin(), pcm.end(), [](pcm_stereo_sample frame) {
+            return frame.l != 0 || frame.r != 0;
+        });
+        if (audible) last_signal = now;
+        const bool signal_present = source && last_signal != Clock::time_point::min() &&
+            now - last_signal < std::max(period * 2, std::chrono::microseconds(220000)) &&
+            (!using_local_audio || playing);
+        if (!frame_available && !signal_present)
         {
-            auto *source = using_local_audio ? static_cast<AudioSource *>(player) : system_audio.get();
-            const bool frame_available = source && source->read(pcm.data(), static_cast<uint32_t>(pcm.size()));
-            const bool audible = frame_available && std::any_of(pcm.begin(), pcm.end(), [](pcm_stereo_sample frame) {
-                return frame.l != 0 || frame.r != 0;
-            });
-            if (audible) last_signal = now;
-            signal_present = last_signal != Clock::time_point::min() &&
-                now - last_signal < std::max(period * 2, std::chrono::microseconds(220000)) &&
-                (!using_local_audio || playing);
-            if (!frame_available && !signal_present)
-            {
-                std::fill(pcm.begin(), pcm.end(), pcm_stereo_sample{});
-            }
+            std::fill(pcm.begin(), pcm.end(), pcm_stereo_sample{});
         }
 
         std::string status;
         const char *signal = "Ready";
-        if (view == ViewMode::Visualizer)
+        if (using_local_audio || full_view)
         {
             if (signal_present)
             {

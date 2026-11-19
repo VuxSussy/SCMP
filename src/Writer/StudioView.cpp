@@ -16,8 +16,9 @@ struct GraphArea
     int height;
 };
 
-GraphArea graph_area(int width, int height)
+GraphArea graph_area(int width, int height, bool inset = true)
 {
+    if (!inset) return {0, 0, width, height};
     const int x = width >= 88 ? 3 : 0;
     const int y = height >= 20 ? 1 : 0;
     return {x, y, width - x * 2, height - y * 2};
@@ -271,6 +272,7 @@ WINDOW *scmp::StudioView::begin_frame(const MusicSession &music, ViewMode view, 
     }
     const bool local = music.loaded();
     const bool stage = view == ViewMode::Visualizer;
+    m_full_stage = stage;
     const int header = 3;
     const int bottom = rows - 5;
     constexpr int stage_x = 2;
@@ -298,20 +300,30 @@ WINDOW *scmp::StudioView::begin_frame(const MusicSession &music, ViewMode view, 
     m_writer.write_over(stdscr, 2, 2, rule, A_DIM);
     m_writer.write_over(stdscr, bottom, 2, rule, A_DIM);
 
-    if (!stage)
+    GraphArea canvas{stage_x, header, content_width, content_height};
+    if (!stage && width >= 96)
     {
-        const bool show_details = width >= 76 && content_height >= 11 && !music.visible_tracks().empty();
-        const int detail_width = std::min(40, content_width / 3);
-        const int list_width = show_details ? content_width - detail_width - 4 : content_width;
-        draw_playlist(music, 2, list_width, header, content_height, !show_details);
+        const int list_width = std::min(76, content_width * 2 / 5);
+        const bool show_details = content_height >= 22 && !music.visible_tracks().empty();
+        const int details_height = show_details ? 11 : 0;
+        draw_playlist(music, stage_x, list_width, header, content_height, !show_details);
+        for (int row = header; row < bottom; ++row)
+        {
+            m_writer.write_over(stdscr, row, list_width + 3, L"│", A_DIM);
+        }
+        canvas = {list_width + 6, header + details_height,
+                  content_width - list_width - 4, content_height - details_height};
         if (show_details)
         {
-            for (int row = header; row < bottom; ++row)
-            {
-                m_writer.write_over(stdscr, row, list_width + 3, L"│", A_DIM);
-            }
-            draw_track_preview(music, list_width + 6, detail_width, header, content_height);
+            draw_track_preview(music, canvas.x, canvas.width, header, details_height);
         }
+    }
+    else if (!stage)
+    {
+        const int graph_height = content_height >= 9 ? std::min(11, std::max(5, content_height / 3)) : 0;
+        const int list_height = content_height - graph_height - (graph_height ? 1 : 0);
+        draw_playlist(music, stage_x, content_width, header, list_height, true);
+        canvas = {stage_x, bottom - graph_height, content_width, graph_height};
     }
 
     const auto *player = music.player();
@@ -339,7 +351,7 @@ WINDOW *scmp::StudioView::begin_frame(const MusicSession &music, ViewMode view, 
     std::string controls;
     if (!stage)
     {
-        controls = width >= 64 ? "Enter play   Space pause   / filter   n/N next/prev" : "Enter play   / filter";
+        controls = width >= 67 ? "Enter play   Space pause   / filter   v effect   n/N next/prev" : "Enter play   / filter   v effect";
     }
     else if (effect == "lava")
     {
@@ -370,14 +382,17 @@ WINDOW *scmp::StudioView::begin_frame(const MusicSession &music, ViewMode view, 
                width < 76 ? "i Spotify   o Folder   Tab View   s Settings   q Quit" :
                             "i Spotify   o Folder   Tab View   s Settings   p Plugins   q Quit", accent);
 
-    if (!stage)
-    {
-        return nullptr;
-    }
-    if (!m_stage || getmaxx(m_stage.get()) != content_width || getmaxy(m_stage.get()) != content_height)
+    if (canvas.height < 4)
     {
         m_visualizer.reset();
-        m_stage.reset(derwin(stdscr, content_height, content_width, header, stage_x));
+        m_stage.reset();
+        return nullptr;
+    }
+    if (!m_stage || getmaxx(m_stage.get()) != canvas.width || getmaxy(m_stage.get()) != canvas.height ||
+        getbegx(m_stage.get()) != canvas.x || getbegy(m_stage.get()) != canvas.y)
+    {
+        m_visualizer.reset();
+        m_stage.reset(derwin(stdscr, canvas.height, canvas.width, canvas.y, canvas.x));
     }
     m_stage_visible = m_stage != nullptr;
     return m_stage.get();
@@ -481,7 +496,7 @@ void scmp::StudioView::draw_label(WINDOW *surface, int row, int column, int widt
 WINDOW *scmp::StudioView::visualizer_surface()
 {
     auto *stage = m_stage.get();
-    const auto area = graph_area(getmaxx(stage), getmaxy(stage));
+    const auto area = graph_area(getmaxx(stage), getmaxy(stage), m_full_stage);
     if (area.width < 16 || area.height < 4)
     {
         return stage;
@@ -496,7 +511,7 @@ WINDOW *scmp::StudioView::visualizer_surface()
 void scmp::StudioView::draw_visualizer_frame(const std::string &mode, const char *signal, bool audible)
 {
     auto *stage = m_stage.get();
-    const auto area = graph_area(getmaxx(stage), getmaxy(stage));
+    const auto area = graph_area(getmaxx(stage), getmaxy(stage), m_full_stage);
     const int x = area.x;
     const int y = area.y;
     const int width = area.width;
@@ -513,7 +528,8 @@ void scmp::StudioView::draw_visualizer_frame(const std::string &mode, const char
     }
     const int status_col = x + width - 3 - static_cast<int>(std::strlen(signal));
     const int accent = audible ? (COLORS >= 256 ? COLOR_PAIR(87) : A_BOLD) : A_DIM;
-    draw_label(stage, y, x + 2, std::max(1, status_col - x - 3), " " + mode + " ", A_BOLD);
+    const auto title = !m_full_stage && width >= 44 ? "Visualizer / " + mode : mode;
+    draw_label(stage, y, x + 2, std::max(1, status_col - x - 3), " " + title + " ", A_BOLD);
     draw_label(stage, y, status_col, x + width - status_col - 1, " " + std::string(signal) + " ", accent);
 }
 
