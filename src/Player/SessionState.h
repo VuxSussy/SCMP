@@ -15,6 +15,7 @@ struct SessionState
     bool shuffle = false;
     int repeat = 0;
     std::string layout;
+    size_t playlist = 0;
 };
 
 SessionState read_session(const std::string &path);

@@ -40,7 +40,7 @@ const char *help =
     "  -h, --help       Show this help\n"
     "\n"
     "While running: 1 Visualizer, 2 Player, i Spotify (macOS), o folder, v effect, T themes, q quit.\n"
-    "Player: Space pause, ←/→ seek, +/- volume, n/N next/prev, z shuffle, R repeat.\n";
+    "Player: p pause, >/< next/prev, f/b seek, +/- volume, z shuffle, r repeat, o folders, ? keys.\n";
 }
 
 int main(int argc, char *argv[])
@@ -205,7 +205,7 @@ int main(int argc, char *argv[])
                 {
                     try
                     {
-                        music.open(state.folder);
+                        music.open_folders(scmp::split_folders(state.folder));
                         music.restore(state);
                         restored_library = true;
                     }
@@ -228,7 +228,7 @@ int main(int argc, char *argv[])
                     {
                         try
                         {
-                            music.open(configured_folder);
+                            music.open_folders(scmp::split_folders(configured_folder));
                         }
                         catch (const std::exception &exception)
                         {
@@ -263,7 +263,10 @@ int main(int argc, char *argv[])
                 state.mode = mode;
                 state.theme = selected_theme;
                 state.layout = layout;
-                state.library_setting = previous_folder;
+                // The folders screen may have saved a new folder list; match what the config holds now.
+                scmp::Settings latest;
+                ConfigurationUtils::load_settings(latest, config_path);
+                state.library_setting = latest.workspace.music_directory;
                 state.theme_setting = configured_theme;
                 music.remember(state);
                 if (!scmp::save_session(state_path, state))

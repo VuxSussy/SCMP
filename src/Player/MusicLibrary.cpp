@@ -40,6 +40,33 @@ std::string scmp::expand_path(const std::string &path)
     return path;
 }
 
+std::vector<std::string> scmp::split_folders(const std::string &setting)
+{
+    std::vector<std::string> folders;
+    size_t start = 0;
+    while (start <= setting.size())
+    {
+        auto end = setting.find(',', start);
+        if (end == std::string::npos) end = setting.size();
+        const auto first = setting.find_first_not_of(" \t", start);
+        const auto last = setting.find_last_not_of(" \t", end == 0 ? 0 : end - 1);
+        if (first != std::string::npos && first < end && last >= first)
+        {
+            const auto folder = setting.substr(first, last - first + 1);
+            if (folder != "none") folders.push_back(folder);
+        }
+        start = end + 1;
+    }
+    return folders;
+}
+
+std::string scmp::join_folders(const std::vector<std::string> &folders)
+{
+    std::string setting;
+    for (const auto &folder : folders) setting += (setting.empty() ? "" : ", ") + folder;
+    return setting.empty() ? "none" : setting;
+}
+
 std::vector<scmp::MusicTrack> scmp::scan_music_directory(const std::string &directory)
 {
     const auto path = expand_path(directory);

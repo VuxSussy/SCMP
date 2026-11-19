@@ -77,13 +77,28 @@ void scmp::Plugins::load(const std::string &folder, const std::string &enabled)
                 }
                 else
                 {
-                    const auto entry_point = reinterpret_cast<decltype(&scmp_plugin_v1)>(
-                        dlsym(entry.handle.get(), "scmp_plugin_v1"));
-                    entry.api = entry_point ? entry_point() : nullptr;
+                    const auto entry_v2 = reinterpret_cast<decltype(&scmp_plugin_v2)>(
+                        dlsym(entry.handle.get(), "scmp_plugin_v2"));
+                    const auto *api2 = entry_v2 ? entry_v2() : nullptr;
+                    if (api2 && api2->abi_version == SCMP_PLUGIN_V2_ABI_VERSION)
+                    {
+                        entry.api2 = api2;
+                        entry.layers = std::make_unique<ScmpPluginV1>(ScmpPluginV1{
+                            SCMP_PLUGIN_ABI_VERSION, api2->name, api2->background, api2->visualizer, api2->overlay});
+                        entry.api = entry.layers.get();
+                    }
+                    else
+                    {
+                        const auto entry_point = reinterpret_cast<decltype(&scmp_plugin_v1)>(
+                            dlsym(entry.handle.get(), "scmp_plugin_v1"));
+                        entry.api = entry_point ? entry_point() : nullptr;
+                    }
                     if (!entry.api || entry.api->abi_version != SCMP_PLUGIN_ABI_VERSION)
                     {
-                        entry.error = "Missing or incompatible scmp_plugin_v1";
+                        entry.error = "Missing or incompatible scmp_plugin_v1 or scmp_plugin_v2";
                         entry.api = nullptr;
+                        entry.api2 = nullptr;
+                        entry.layers.reset();
                         entry.handle.reset();
                     }
                 }
@@ -125,6 +140,15 @@ std::string scmp::Plugins::visualizer_name() const
         return {};
     }
     return found->api->name && *found->api->name ? found->api->name : found->file;
+}
+
+const ScmpPluginV2 *scmp::Plugins::layout() const
+{
+    for (const auto &entry : m_entries)
+    {
+        if (entry.api2 && entry.api2->layout_draw) return entry.api2;
+    }
+    return nullptr;
 }
 
 void scmp::Plugins::draw(const ScmpPluginFrame &frame, WINDOW *surface, NcursesWriter &writer,
@@ -198,7 +222,7 @@ void scmp::Plugins::menu(const std::string &config_path, const volatile std::sig
         refresh();
 
         const int key = getch();
-        if (key == 'q' || key == 27 || key == 'p')
+        if (key == 'q' || key == 27 || key == 'P')
         {
             return;
         }

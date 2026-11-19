@@ -100,7 +100,9 @@ void scmp::import_spotify(MusicSession &music, const volatile std::sig_atomic_t 
         const auto status = run_spotify({"import", url, "--download", "--output", folder});
         if (!interrupted && (status == 0 || status == 3))
         {
-            music.open(folder);
+            // A downloaded playlist joins the library as its own playlist.
+            if (music.loaded()) music.add_folder(folder);
+            else music.open(folder);
             if (status == 3)
             {
                 music.set_error("Some tracks failed to download. Press i to retry.");

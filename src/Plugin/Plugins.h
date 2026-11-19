@@ -15,6 +15,8 @@ class Plugins
     void menu(const std::string &config_path, const volatile std::sig_atomic_t &interrupted);
     bool active() const;
     std::string visualizer_name() const;
+    // The first enabled plugin that draws a Player layout, or nullptr.
+    const ScmpPluginV2 *layout() const;
     void draw_background(const ScmpPluginFrame &frame, WINDOW *surface, NcursesWriter &writer) const;
     void draw_visualizer(const ScmpPluginFrame &frame, WINDOW *surface, NcursesWriter &writer) const;
     void draw_overlay(const ScmpPluginFrame &frame, WINDOW *surface, NcursesWriter &writer) const;
@@ -31,6 +33,9 @@ class Plugins
         bool enabled = false;
         std::unique_ptr<void, Close> handle;
         const ScmpPluginV1 *api = nullptr;
+        // Version 2 plugins: their layers are copied into v1 so the drawing code serves both.
+        const ScmpPluginV2 *api2 = nullptr;
+        std::unique_ptr<ScmpPluginV1> layers;
     };
 
     void draw(const ScmpPluginFrame &frame, WINDOW *surface, NcursesWriter &writer, ScmpPluginDraw ScmpPluginV1::*layer,

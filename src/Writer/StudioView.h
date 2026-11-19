@@ -5,6 +5,7 @@
 #include "Writer/NcursesWriter.h"
 #include "Writer/AlbumArt.h"
 #include "Writer/Wallpaper.h"
+#include <scmp/plugin.h>
 #include <array>
 #include <csignal>
 #include <memory>
@@ -19,8 +20,9 @@ class StudioView
     StudioView(const WorkspaceSettings &settings, NcursesWriter &writer);
     void cycle_theme();
     bool choose_theme(const volatile std::sig_atomic_t &interrupted);
+    // layout is the enabled layout plugin, or nullptr. It draws the Player when the plugin layout is on.
     WINDOW *begin_frame(const MusicSession &music, ViewMode view, const std::string &effect,
-                        const char *input, const std::string &status);
+                        const char *input, const std::string &status, const ScmpPluginV2 *layout = nullptr);
     WINDOW *visualizer_surface();
     void draw_visualizer_frame(const std::string &mode, const char *signal, bool audible);
     void finish_frame();
@@ -30,15 +32,21 @@ class StudioView
         m_now_art.clear();
         m_bar_art.clear();
     }
-    // Classic layout or the Spotify-inspired one, switched with L.
-    void toggle_layout();
-    void restore_layout(const std::string &layout);
-    std::string layout_name() const { return m_layout == Layout::Spotify ? "spotify" : "classic"; }
-    bool sidebar_focus() const { return m_sidebar_focus; }
-    void set_sidebar_focus(bool focus);
-    void sidebar_move(int offset);
-    // The filter for the selected library item: empty for the whole playlist, else an artist.
-    std::string sidebar_choice() const;
+    // Classic layout or the layout plugin, switched with L.
+    void toggle_layout() { m_use_plugin = !m_use_plugin; clear_cover(); }
+    void restore_layout(const std::string &layout) { m_use_plugin = layout != "classic"; }
+    std::string layout_name() const { return m_use_plugin ? "plugin" : "classic"; }
+    bool uses_plugin(const ScmpPluginV2 *layout) const;
+    // Offers a key to the layout plugin. Returns true when the plugin handled it.
+    bool plugin_key(const MusicSession &music, const ScmpPluginV2 *layout, int key);
+    struct LayoutCommand
+    {
+        int command;
+        double value;
+        std::string text;
+    };
+    // Commands the layout plugin sent since the last call.
+    std::vector<LayoutCommand> take_commands();
     bool show_help(const volatile std::sig_atomic_t &interrupted);
     std::string theme_choice() const { return m_show_background ? "custom" : m_theme; }
     void restore_theme(const std::string &theme);
@@ -62,15 +70,17 @@ class StudioView
     void draw_hints(int row, int x, int width, const std::vector<std::pair<std::string, std::string>> &hints,
                     int key_style);
     void fill_bar(int row, int x, int width, int background);
-    void fill_rect(int x, int y, int width, int height, int background);
-    WINDOW *begin_spotify_frame(const MusicSession &music, const std::string &effect, const std::string &status);
-    void refresh_library(const MusicSession &music);
-    void draw_spotify_top(const MusicSession &music);
-    void draw_spotify_sidebar(const MusicSession &music, int x, int width, int top, int height);
-    void draw_spotify_main(const MusicSession &music, int x, int width, int top, int height);
-    void draw_spotify_now(const MusicSession &music, const TrackDetails &shown, int x, int width, int top,
-                          int cover_height);
-    void draw_spotify_bar(const MusicSession &music, const std::string &status);
+    WINDOW *begin_plugin_frame(const MusicSession &music, const ScmpPluginV2 *layout, const std::string &status);
+    ScmpLayout snapshot(const MusicSession &music, const std::string &status, bool drawing);
+    static int layout_text(ScmpLayout *layout, int x, int y, int max_width, const char *utf8, int fg, int bg,
+                           int attrs);
+    static int layout_text_width(ScmpLayout *layout, const char *utf8);
+    static void layout_fill(ScmpLayout *layout, int x, int y, int width, int height, int bg);
+    static void layout_image(ScmpLayout *layout, int which, int x, int y, int width, int height);
+    static uint32_t layout_image_color(ScmpLayout *layout, int which);
+    static int layout_color(ScmpLayout *layout, uint32_t rgb);
+    static void layout_visualizer(ScmpLayout *layout, int x, int y, int width, int height);
+    static void layout_command(ScmpLayout *layout, int command, double value, const char *text);
     void draw_label(WINDOW *surface, int row, int column, int width, const std::string &text,
                     int style = A_NORMAL);
 
@@ -78,21 +88,19 @@ class StudioView
     AlbumArt m_album_art{0};
     AlbumArt m_now_art{1};
     AlbumArt m_bar_art{2};
-    enum class Layout
-    {
-        Classic,
-        Spotify
-    };
-    Layout m_layout = Layout::Classic;
-    bool m_sidebar_focus = false;
-    size_t m_sidebar_index = 0;
-    std::vector<std::pair<std::string, size_t>> m_artists;
-    double m_library_length = 0;
-    size_t m_library_tracks = static_cast<size_t>(-1);
-    size_t m_library_tick = 0;
-    size_t m_tick = 0;
-    std::string m_header_key;
-    uint32_t m_header_rgb = 0x3a2a6a;
+    // Layout plugin state. The snapshot vectors own the strings the plugin reads during a call.
+    bool m_use_plugin = true;
+    bool m_layout_drawing = false;
+    const MusicSession *m_layout_music = nullptr;
+    std::vector<TrackTags> m_layout_tags;
+    std::vector<ScmpTrack> m_layout_tracks;
+    std::vector<uint32_t> m_layout_visible;
+    std::vector<ScmpPlaylist> m_layout_playlists;
+    std::string m_layout_user, m_layout_search, m_layout_message;
+    std::array<int, 4> m_layout_visualizer{};
+    int m_layout_images = 0;
+    uint64_t m_layout_frame = 0;
+    std::vector<LayoutCommand> m_commands;
     std::string m_theme;
     std::string m_background_error;
     PixelImage m_background;

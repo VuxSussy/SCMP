@@ -16,6 +16,7 @@
 #include "Writer/SettingsMenu.h"
 #include "Writer/StudioView.h"
 #include "Writer/TerminalText.h"
+#include "Utils/ConfigurationUtils.h"
 #include "Utils/Utils.h"
 
 #include <algorithm>
@@ -42,6 +43,115 @@ std::future<AudioStart> start_mac_capture()
     return result;
 }
 #endif
+
+void save_folders(const scmp::MusicSession &music, const std::string &config_path)
+{
+    try
+    {
+        scmp::ConfigurationUtils::save_options(config_path, {{"music.directory", scmp::join_folders(music.folders())}});
+    }
+    catch (const std::exception &exception)
+    {
+        // Keep the library open even when the config cannot be written.
+        const_cast<scmp::MusicSession &>(music).set_error(exception.what());
+    }
+}
+
+// The music folders screen: each folder is a playlist. Returns true when the library changed or a
+// playlist was chosen, so the caller can show the player.
+bool manage_folders(scmp::MusicSession &music, const std::string &config_path,
+                    const volatile std::sig_atomic_t &interrupted)
+{
+    using scmp::draw_text;
+    size_t selected = music.playlist();
+    bool changed = false;
+    std::string message;
+    timeout(100);
+    while (!interrupted)
+    {
+        const auto &playlists = music.playlists();
+        selected = playlists.empty() ? 0 : std::min(selected, playlists.size() - 1);
+        erase();
+        draw_text(stdscr, 0, 2, COLS - 4, "Music folders", A_BOLD);
+        draw_text(stdscr, 1, 2, COLS - 4, "Each folder is a playlist. Changes are saved to your config.", A_DIM);
+        if (playlists.empty()) draw_text(stdscr, 3, 2, COLS - 4, "No folders yet. Press a to add one.", A_NORMAL);
+        for (size_t i = 0; i < playlists.size() && static_cast<int>(i) + 3 < LINES - 3; ++i)
+        {
+            const auto &playlist = playlists[i];
+            const auto label = (i == music.playlist() ? "▶ " : "  ") + playlist.name + "  (" +
+                               std::to_string(playlist.tracks) + (playlist.tracks == 1 ? " song)" : " songs)");
+            const int row = 3 + static_cast<int>(i);
+            draw_text(stdscr, row, 2, COLS / 2, label, i == selected ? A_REVERSE | A_BOLD : A_BOLD);
+            if (!playlist.directory.empty()) draw_text(stdscr, row, COLS / 2 + 2, COLS / 2 - 4, playlist.directory, A_DIM);
+        }
+        if (!message.empty()) draw_text(stdscr, LINES - 3, 2, COLS - 4, message, A_BOLD);
+        draw_text(stdscr, LINES - 1, 2, COLS - 4, "j/k select   Enter open   a add folder   d remove   Esc back", A_DIM);
+        refresh();
+        const int key = getch();
+        if (key == 27 || key == 'q') return changed;
+        if ((key == KEY_UP || key == 'k') && selected > 0) --selected;
+        if ((key == KEY_DOWN || key == 'j') && selected + 1 < playlists.size()) ++selected;
+        if ((key == KEY_ENTER || key == '\n' || key == '\r') && selected < playlists.size())
+        {
+            music.set_playlist(selected);
+            return true;
+        }
+        if (key == 'a')
+        {
+            auto folder = scmp::Utils::get_home_directory() + "Music";
+            if (scmp::prompt_text(folder, "Add music folder", "Enter a folder path. Subfolders are included.",
+                                  interrupted) && !folder.empty())
+            {
+                try
+                {
+                    if (music.loaded()) music.add_folder(folder);
+                    else music.open(folder);
+                    save_folders(music, config_path);
+                    selected = music.playlist();
+                    changed = true;
+                    message.clear();
+                }
+                catch (const std::exception &exception)
+                {
+                    message = exception.what();
+                }
+            }
+            timeout(100);
+        }
+        if (key == 'd' && selected < music.folders().size())
+        {
+            music.remove_folder(selected);
+            save_folders(music, config_path);
+            changed = true;
+        }
+    }
+    return changed;
+}
+
+void apply_layout_commands(scmp::MusicSession &music, const std::vector<scmp::StudioView::LayoutCommand> &commands)
+{
+    for (const auto &command : commands)
+    {
+        if (!music.loaded()) return;
+        switch (command.command)
+        {
+        case SCMP_COMMAND_PLAY_SELECTED: music.play_selected(); break;
+        case SCMP_COMMAND_TOGGLE_PAUSE: music.toggle_pause(); break;
+        case SCMP_COMMAND_NEXT: music.play_neighbor(1); break;
+        case SCMP_COMMAND_PREVIOUS: music.play_neighbor(-1); break;
+        case SCMP_COMMAND_SEEK: music.seek(command.value); break;
+        case SCMP_COMMAND_VOLUME: music.change_volume(command.value); break;
+        case SCMP_COMMAND_SHUFFLE: music.toggle_shuffle(); break;
+        case SCMP_COMMAND_REPEAT: music.cycle_repeat(); break;
+        case SCMP_COMMAND_SEARCH: music.filter(command.text); break;
+        case SCMP_COMMAND_SELECT: music.select(static_cast<int>(command.value)); break;
+        case SCMP_COMMAND_PLAYLIST:
+            if (command.value >= 0) music.set_playlist(static_cast<size_t>(command.value));
+            break;
+        default: break;
+        }
+    }
+}
 
 class MouseTracking
 {
@@ -222,7 +332,7 @@ bool scmp::Visualizer::run(const std::string &config_path, std::string &mode, Vi
         }
 
         if (key == KEY_RESIZE) studio.clear_cover();
-        if (key == 's' || key == 'p' || key == 'o' || key == 'i' || key == 'T' || key == '?' ||
+        if (key == 's' || key == 'P' || key == 'o' || key == 'i' || key == 'T' || key == '?' ||
             (key == '/' && m_music.loaded()))
         {
             mouse.set(false);
@@ -236,7 +346,7 @@ bool scmp::Visualizer::run(const std::string &config_path, std::string &mode, Vi
                 theme.clear();
                 return true;
             }
-            if (key == 'p') plugins.menu(config_path, interrupted);
+            if (key == 'P') plugins.menu(config_path, interrupted);
             if (key == '?') studio.show_help(interrupted);
             if (key == 'T' && studio.choose_theme(interrupted)) theme = studio.theme_choice();
             if (key == 'i')
@@ -248,23 +358,7 @@ bool scmp::Visualizer::run(const std::string &config_path, std::string &mode, Vi
                 m_music.set_error("Download with scmp spotify import URL --download, then press o to open the folder.");
 #endif
             }
-            if (key == 'o')
-            {
-                auto folder = m_music.loaded() ? m_music.directory() : Utils::get_home_directory() + "Music";
-                if (prompt_text(folder, "Open music folder", "Enter a folder path. Subfolders are included.",
-                                interrupted) && !folder.empty())
-                {
-                    view = ViewMode::Player;
-                    try
-                    {
-                        m_music.open(folder);
-                    }
-                    catch (const std::exception &exception)
-                    {
-                        m_music.set_error(exception.what());
-                    }
-                }
-            }
+            if (key == 'o' && manage_folders(m_music, config_path, interrupted)) view = ViewMode::Player;
             if (key == '/')
             {
                 auto query = m_music.query();
@@ -280,10 +374,23 @@ bool scmp::Visualizer::run(const std::string &config_path, std::string &mode, Vi
 
         if (key == 'L')
         {
-            studio.toggle_layout();
-            layout = studio.layout_name();
-            view = ViewMode::Player;
-            writer.set_surface(nullptr);
+            if (plugins.layout())
+            {
+                studio.toggle_layout();
+                layout = studio.layout_name();
+                view = ViewMode::Player;
+                writer.set_surface(nullptr);
+            }
+            else
+            {
+                m_music.set_error("No layout plugin is enabled. Press P to enable one.");
+            }
+        }
+        // A layout plugin sees Player keys first, then scmp runs the commands it sent.
+        if (view == ViewMode::Player && m_music.loaded() && key != ERR && studio.plugin_key(m_music, plugins.layout(), key))
+        {
+            apply_layout_commands(m_music, studio.take_commands());
+            continue;
         }
         if (key == 't')
         {
@@ -326,55 +433,41 @@ bool scmp::Visualizer::run(const std::string &config_path, std::string &mode, Vi
             const bool in_player = view == ViewMode::Player;
             switch (key)
             {
+            // ncmpcpp-style keys. Space and the arrows stay as aliases.
+            case 'p':
             case ' ': m_music.toggle_pause(); break;
-            case 'n': m_music.play_neighbor(1); break;
-            case 'N': m_music.play_neighbor(-1); break;
+            case '>': m_music.play_neighbor(1); break;
+            case '<': m_music.play_neighbor(-1); break;
+            case 'f': m_music.seek(5); break;
+            case 'b': m_music.seek(-5); break;
             case '+':
             case '=': m_music.change_volume(0.05); break;
             case '-':
             case '_': m_music.change_volume(-0.05); break;
             case 'z': m_music.toggle_shuffle(); break;
-            case 'R': m_music.cycle_repeat(); break;
+            case 'r': m_music.cycle_repeat(); break;
             case KEY_LEFT:
-            case ',':
                 if (in_player || !lava) m_music.seek(-5);
                 break;
             case KEY_RIGHT:
-            case '.':
                 if (in_player || !lava) m_music.seek(5);
                 break;
             case 'C':
                 view = ViewMode::Player;
                 m_music.select_playing();
                 break;
-            case 'h':
-                if (in_player) studio.set_sidebar_focus(true);
-                break;
-            case 'l':
-                if (in_player) studio.set_sidebar_focus(false);
-                break;
             case KEY_UP:
             case 'k':
-                if (in_player && studio.sidebar_focus()) studio.sidebar_move(-1);
-                else if (in_player) m_music.select(-1);
+                if (in_player) m_music.select(-1);
                 break;
             case KEY_DOWN:
             case 'j':
-                if (in_player && studio.sidebar_focus()) studio.sidebar_move(1);
-                else if (in_player) m_music.select(1);
+                if (in_player) m_music.select(1);
                 break;
             case KEY_ENTER:
             case '\r':
             case '\n':
-                if (in_player && studio.sidebar_focus())
-                {
-                    m_music.filter(studio.sidebar_choice());
-                    studio.set_sidebar_focus(false);
-                }
-                else if (in_player)
-                {
-                    m_music.play_selected();
-                }
+                if (in_player) m_music.play_selected();
                 break;
             case KEY_PPAGE:
                 if (in_player) m_music.select(-10);
@@ -399,7 +492,7 @@ bool scmp::Visualizer::run(const std::string &config_path, std::string &mode, Vi
         {
             move_lava_pointer(*lava, key, writer, getbegy(writer.surface()), getbegx(writer.surface()));
         }
-        if (key == 'r' && view == ViewMode::Visualizer && !using_local_audio && !pending_capture.valid())
+        if (key == 'R' && view == ViewMode::Visualizer && !using_local_audio && !pending_capture.valid())
         {
             system_audio.reset();
             tried_system_audio = false;
@@ -538,7 +631,8 @@ bool scmp::Visualizer::run(const std::string &config_path, std::string &mode, Vi
                                        : "Waiting for PCM audio on the MPD FIFO.";
             }
         }
-        auto *surface = studio.begin_frame(m_music, view, name, input, status);
+        auto *surface = studio.begin_frame(m_music, view, name, input, status, plugins.layout());
+        apply_layout_commands(m_music, studio.take_commands());
         if (surface)
         {
             ScmpPluginFrame frame{};

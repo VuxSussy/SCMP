@@ -171,12 +171,16 @@ VPATH= src tests perf_tests $(dir $(wildcard src/*/ src/*/*/)) $(dir $(wildcard 
 
 all: build
 
-.PHONY: example-plugin
+.PHONY: example-plugin plugins
 example-plugin: $(BUILD_DIR)/plugins/pulse-grid.$(PLUGIN_SUFFIX)
 
-$(BUILD_DIR)/plugins/pulse-grid.$(PLUGIN_SUFFIX): examples/plugins/pulse-grid.c include/scmp/plugin.h
+# Every example plugin: make plugins, then point plugins.directory at build/plugins or copy them.
+PLUGIN_SOURCES = $(wildcard examples/plugins/*.c)
+plugins: $(patsubst examples/plugins/%.c,$(BUILD_DIR)/plugins/%.$(PLUGIN_SUFFIX),$(PLUGIN_SOURCES))
+
+$(BUILD_DIR)/plugins/%.$(PLUGIN_SUFFIX): examples/plugins/%.c include/scmp/plugin.h
 	mkdir -p $(BUILD_DIR)/plugins
-	$(CC) $(PLUGIN_FLAGS) -I$(DIR)/include $< -o $@
+	$(CC) $(PLUGIN_FLAGS) -O2 -Wall -Wextra -I$(DIR)/include $< -o $@
 
 test: tests
 

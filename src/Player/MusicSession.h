@@ -25,7 +25,16 @@ class MusicSession
     MusicSession(MusicSession &&) noexcept;
     MusicSession &operator=(MusicSession &&) noexcept;
 
-    void open(const std::string &path);
+    void open(const std::string &path) { open_folders({path}); }
+    // Opens several folders. Each one becomes a playlist, plus "All music" when there are two or more.
+    void open_folders(const std::vector<std::string> &paths);
+    void add_folder(const std::string &path);
+    void remove_folder(size_t index);
+    const std::vector<std::string> &folders() const { return m_folders; }
+    const std::vector<Playlist> &playlists() const { return m_playlists; }
+    size_t playlist() const { return m_playlist; }
+    void set_playlist(size_t index);
+    std::string playlist_name() const;
     void close();
     void restore(const SessionState &state);
     void remember(SessionState &state) const;
@@ -49,7 +58,8 @@ class MusicSession
     TrackTags tags(size_t track) const;
 
     LocalPlayer *player() const { return m_player.get(); }
-    const std::string &directory() const { return m_directory; }
+    // The folder of the current playlist, or the first folder for "All music".
+    const std::string &directory() const;
     const std::vector<MusicTrack> &tracks() const { return m_tracks; }
     const std::vector<size_t> &visible_tracks() const { return m_visible; }
     const std::string &query() const { return m_query; }
@@ -67,8 +77,13 @@ class MusicSession
     void update_details();
     void reset_order();
     size_t neighbor(size_t track, int offset, bool wrap) const;
+    bool in_playlist(size_t track, size_t playlist) const;
 
-    std::string m_directory;
+    std::vector<std::string> m_folders;
+    std::vector<Playlist> m_playlists;
+    size_t m_playlist = 0;
+    // The playlist the playing track was started from; next and previous stay inside it.
+    size_t m_scope = 0;
     std::vector<MusicTrack> m_tracks;
     std::vector<size_t> m_visible;
     std::vector<size_t> m_order;

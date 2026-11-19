@@ -2,6 +2,7 @@
 #include "Writer/TerminalText.h"
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -386,7 +387,7 @@ void scmp::StudioView::restore_theme(const std::string &theme)
 }
 
 WINDOW *scmp::StudioView::begin_frame(const MusicSession &music, ViewMode view, const std::string &effect,
-                                     const char *input, const std::string &status)
+                                     const char *input, const std::string &status, const ScmpPluginV2 *layout)
 {
     erase();
     m_album_art.begin_frame();
@@ -400,10 +401,9 @@ WINDOW *scmp::StudioView::begin_frame(const MusicSession &music, ViewMode view, 
         draw_label(stdscr, 0, 0, width, "Enlarge the terminal to use scmp.");
         return nullptr;
     }
-    if (view == ViewMode::Player && m_layout == Layout::Spotify && width >= 70 && rows >= 20)
+    if (view == ViewMode::Player && uses_plugin(layout))
     {
-        m_full_stage = false;
-        return begin_spotify_frame(music, effect, status);
+        return begin_plugin_frame(music, layout, status);
     }
     const bool local = music.loaded();
     const bool stage = view == ViewMode::Visualizer;
@@ -444,7 +444,10 @@ WINDOW *scmp::StudioView::begin_frame(const MusicSession &music, ViewMode view, 
         else if (!local) path.push_back({"no folder open", blue() | A_BOLD});
         else
         {
-            path.push_back({home_relative(music.directory()) + "/", blue() | A_BOLD});
+            // "All music" has no single folder to show.
+            path.push_back({music.playlist() < music.folders().size() ? home_relative(music.directory()) + "/"
+                                                                      : music.playlist_name() + " / ",
+                            blue() | A_BOLD});
             if (!music.visible_tracks().empty())
             {
                 const auto &file = music.tracks()[music.selected()].path;
@@ -523,15 +526,15 @@ WINDOW *scmp::StudioView::begin_frame(const MusicSession &music, ViewMode view, 
     using Hints = std::vector<std::pair<std::string, std::string>>;
     Hints controls;
     if (!stage)
-        controls = {{"Enter", "play"}, {"Space", "pause"}, {"←/→", "seek"}, {"+/-", "volume"},
-                    {"n/N", "next/prev"}, {"z", "shuffle"}, {"R", "repeat"}, {"/", "filter"}, {"v", "effect"}};
+        controls = {{"Enter", "play"}, {"p", "pause"}, {">/<", "next/prev"}, {"f/b", "seek"}, {"+/-", "volume"},
+                    {"z", "shuffle"}, {"r", "repeat"}, {"/", "search"}, {"v", "effect"}};
     else if (effect == "lava")
         controls = {{"mouse/arrows", "interact"}, {"v", "effect"}, {"T", "wallpaper"}};
     else if (has_track)
-        controls = {{"v", "effect"}, {"T", "wallpaper"}, {"Space", "pause"}, {"←/→", "seek"}, {"+/-", "volume"},
-                    {"n/N", "next/prev"}};
+        controls = {{"v", "effect"}, {"T", "wallpaper"}, {"p", "pause"}, {">/<", "next/prev"}, {"f/b", "seek"},
+                    {"+/-", "volume"}};
     else
-        controls = {{"v", "effect"}, {"T", "wallpaper"}, {"r", "reconnect"}};
+        controls = {{"v", "effect"}, {"T", "wallpaper"}, {"R", "reconnect"}};
     if (!message.empty() && !has_track)
     {
         draw_label(stdscr, bottom + 1, 2, content_width, message, (music.error().empty() ? yellow() : red()) | A_BOLD);
@@ -557,8 +560,8 @@ WINDOW *scmp::StudioView::begin_frame(const MusicSession &music, ViewMode view, 
     if (position_width)
         draw_label(stdscr, rows - 1, width - 2 - position_width, position_width, position_label, gray());
     draw_hints(rows - 1, 2, content_width - position_width - 3,
-               {{"?", "help"}, {"q", "quit"}, {"o", "folder"}, {"i", "Spotify"}, {"Tab", "view"},
-                {"L", "layout"}, {"s", "settings"}, {"p", "plugins"}}, cyan() | A_BOLD);
+               {{"?", "help"}, {"q", "quit"}, {"o", "folders"}, {"i", "Spotify"}, {"Tab", "view"},
+                {"L", "layout"}, {"s", "settings"}, {"P", "plugins"}}, cyan() | A_BOLD);
 
     if (canvas.height < 4)
     {
@@ -828,28 +831,28 @@ void scmp::StudioView::finish_frame()
 bool scmp::StudioView::show_help(const volatile std::sig_atomic_t &interrupted)
 {
     static const char *const keys[][2] = {
-        {"", "Player"},
+        {"", "Player (ncmpcpp style)"},
         {"j/k ↑/↓", "move selection"},
         {"Enter", "play selection"},
-        {"Space", "pause or resume"},
-        {"←/→", "seek 5 seconds"},
-        {"+/-", "volume"},
-        {"n / N", "next / previous track"},
+        {"p  Space", "pause or resume"},
+        {"> / <", "next / previous track"},
+        {"f / b  →/←", "seek 5 seconds forward / back"},
+        {"+ / -", "volume"},
         {"z", "shuffle"},
-        {"R", "repeat off / all / one"},
-        {"/", "filter, Esc clears"},
+        {"r", "repeat off / all / one"},
+        {"/", "search, Esc clears"},
         {"C", "jump to the playing track"},
         {"g / G", "first / last track"},
-        {"L", "classic or Spotify-style layout"},
-        {"h / l", "library sidebar / songs (Spotify layout)"},
+        {"L", "classic layout or the layout plugin"},
         {"", ""},
         {"", "Everywhere"},
         {"1 2 Tab", "visualizer / player"},
+        {"o", "music folders: switch, add, remove"},
         {"v", "next visualizer effect"},
         {"t / T", "next wallpaper / wallpaper picker"},
-        {"o", "open a music folder"},
+        {"R", "reconnect the live audio source"},
         {"i", "import a Spotify playlist"},
-        {"s / p", "settings / plugins"},
+        {"s / P", "settings / plugins"},
         {"q", "quit"},
     };
     timeout(100);
@@ -876,4 +879,4 @@ bool scmp::StudioView::show_help(const volatile std::sig_atomic_t &interrupted)
     return false;
 }
 
-#include "Writer/SpotifyLayout.inc"
+#include "Writer/LayoutHost.inc"

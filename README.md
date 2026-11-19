@@ -20,9 +20,9 @@ SCMP is a terminal music player with a local library, Spotify playlist import, a
 
 ![Player view](docs/screenshots/player.png)
 
-Press `L` in the Player for a Spotify-inspired layout: a library sidebar with your folder and artists, a playlist header tinted by the cover, a two-line song table, a now-playing panel with the visualizer, and a player bar. Press `h` to move into the library, `j`/`k` to choose an artist and Enter to show only their songs. SCMP remembers the layout you used last.
+The Spotify-style layout is a plugin (see [Plugins](#plugins)): a library sidebar with your music folders and artists, a playlist header tinted by the cover, a two-line song table, a now-playing panel with the visualizer, and a player bar. With it enabled, `L` switches between it and the classic layout.
 
-![Spotify-inspired layout](docs/screenshots/spotify-layout.png)
+![Spotify-style layout plugin](docs/screenshots/spotify-layout.png)
 
 | Visualizer: spectrum | Visualizer: ellipse |
 | --- | --- |
@@ -104,26 +104,30 @@ Start directly in Lava with `scmp --mode lava`. Move the mouse inside the lava s
 
 ### Controls
 
+Player keys follow ncmpcpp. Space and the arrow keys also work.
+
 | Key | Description |
 | --- | ----------- |
 | <kbd>1</kbd> / <kbd>2</kbd> | switch to Visualizer / Player |
 | <kbd>Tab</kbd> | toggle between Visualizer and Player |
-| <kbd>v</kbd> | cycle visualizer effects |
-| <kbd>space</kbd> | pause or resume local playback |
-| <kbd>←</kbd> / <kbd>→</kbd> | seek 5 seconds back / forward |
+| <kbd>Enter</kbd> | play the selected track |
+| <kbd>p</kbd> (or <kbd>space</kbd>) | pause or resume |
+| <kbd>&gt;</kbd> / <kbd>&lt;</kbd> | next / previous track |
+| <kbd>f</kbd> / <kbd>b</kbd> (or <kbd>→</kbd> / <kbd>←</kbd>) | seek 5 seconds forward / back |
 | <kbd>+</kbd> / <kbd>-</kbd> | volume up / down |
-| <kbd>n</kbd> / <kbd>N</kbd> | next / previous track |
 | <kbd>z</kbd> | shuffle on or off |
-| <kbd>R</kbd> | repeat off → all → one |
+| <kbd>r</kbd> | repeat off → all → one |
+| <kbd>/</kbd> | search, Esc clears it |
 | <kbd>g</kbd> / <kbd>G</kbd> | first / last track |
-| <kbd>?</kbd> | show every key |
-| <kbd>L</kbd> | switch between the classic and Spotify-inspired layouts |
-| <kbd>h</kbd> / <kbd>l</kbd> | library sidebar / songs, in the Spotify-inspired layout |
-| <kbd>o</kbd> | open a local music folder |
-| <kbd>i</kbd> | import a public Spotify playlist and open the downloads in Player (macOS) |
+| <kbd>C</kbd> | jump to the playing track |
+| <kbd>o</kbd> | music folders: switch playlist, add or remove a folder |
+| <kbd>L</kbd> | classic layout or the layout plugin |
+| <kbd>v</kbd> | cycle visualizer effects |
 | <kbd>t</kbd> / <kbd>T</kbd> | cycle wallpapers / open the wallpaper picker |
-| <kbd>p</kbd> | open the plugin manager |
-| <kbd>s</kbd> | open settings |
+| <kbd>R</kbd> | reconnect the live audio source in the Visualizer |
+| <kbd>i</kbd> | import a public Spotify playlist and open the downloads in Player (macOS) |
+| <kbd>s</kbd> / <kbd>P</kbd> | open settings / the plugin manager |
+| <kbd>?</kbd> | show every key |
 | <kbd>q</kbd> or <kbd>CTRL-C</kbd>| Quit |
 
 ## Local music and pixel themes
@@ -134,9 +138,15 @@ Point `scmp` at a directory with downloaded tracks. It scans subfolders and play
 scmp --view player --music "$HOME/Music/My Albums"
 ```
 
-`↑`/`↓` or `j`/`k` moves the selection. Enter plays it and Space pauses or resumes. Use `/` to filter by filename or folder, Esc to clear the filter, and `C` to jump to the playing track. The highlight marks your selection and ▶ marks the playing track. Playback advances through the full folder in filename order.
+You can keep several music folders. Each folder is a playlist, and with two or more there is also an "All music" playlist. Press `o` to switch playlists, `a` there to add a folder and `d` to remove one; SCMP saves the list as `music.directory`, separated by commas:
 
-Player shows the selected track’s cover and album details above the playlist when there is room. The bordered visualizer sits to the right in wide terminals and below the playlist in narrower ones. Press `v` to change the effect in either view. Press `1` for the full-screen Visualizer, `2` for the Player, or Tab to switch. Switching views preserves the current track and its position. The Visualizer uses the current local track when one is loaded. Before a local track is loaded, it uses the configured live source, which defaults to Mac system audio on macOS. Press `r` in the Visualizer to reconnect a live source.
+```sh
+scmp --set "music.directory=~/Music, ~/Downloads/Albums"
+```
+
+`↑`/`↓` or `j`/`k` moves the selection. Enter plays it and `p` pauses or resumes. Use `/` to search titles, artists and filenames, Esc to clear the search, and `C` to jump to the playing track. The highlight marks your selection and ▶ marks the playing track. Playback continues through the playlist the track was started from, in filename order.
+
+Player shows the selected track’s cover and album details above the playlist when there is room. The bordered visualizer sits to the right in wide terminals and below the playlist in narrower ones. Press `v` to change the effect in either view. Press `1` for the full-screen Visualizer, `2` for the Player, or Tab to switch. Switching views preserves the current track and its position. The Visualizer uses the current local track when one is loaded. Before a local track is loaded, it uses the configured live source, which defaults to Mac system audio on macOS. Press `R` in the Visualizer to reconnect a live source.
 
 With `--music DIR`, the app starts in the Player when that folder has tracks and in the Visualizer when it is empty. Use `--view visualizer` or `--view player` to choose the opening view. Use `n`/`N` for next/previous, `←`/`→` to seek, `+`/`-` for volume, `z` for shuffle, `R` to cycle repeat, and `v` for the next visualizer effect. On macOS, the keyboard media keys, headphone controls and the Now Playing widget in Control Center also control playback. Press `o` in either view to open a folder in the Player.
 
@@ -173,17 +183,19 @@ If some tracks fail, `download` reports how many are ready and exits with a fail
 
 ## Plugins
 
-Press `p` or run `scmp --plugins` to list plugins, check load errors, and enable or disable a plugin with Enter. The manager looks in `~/.scmp/plugins` by default. Set `plugins.directory` to use another folder. Native plugins execute with the same permissions as `scmp`, so only enable plugins you trust.
+Press `P` or run `scmp --plugins` to list plugins, check load errors, and enable or disable a plugin with Enter. The manager looks in `~/.scmp/plugins` by default. Set `plugins.directory` to use another folder. Native plugins execute with the same permissions as `scmp`, so only enable plugins you trust.
 
-Build and try the bundled stereo oscilloscope from the repository:
+Build and try the bundled plugins, the Pulse Grid stereo oscilloscope and the Spotify-style layout:
 
 ```sh
-make example-plugin
+make plugins
 ./build/scmp --set "plugins.directory=$PWD/build/plugins"
 ./build/scmp --plugins
 ```
 
-Select Pulse Grid and press Enter, then return to the visualizer. Use [include/scmp/plugin.h](include/scmp/plugin.h) and [the Pulse Grid example](examples/plugins/pulse-grid.c) to write a plugin in C or C++. Export `scmp_plugin_v1` and provide any combination of `background`, `visualizer`, and `overlay` callbacks. Each callback receives a clipped terminal canvas, stereo samples, the current mode, and playback information. Backgrounds draw after the selected theme, and overlays draw after the visualizer. If multiple plugins replace the visualizer, the first by filename is used.
+Select a plugin and press Enter to enable it. `./install.sh` also copies them to `~/.scmp/plugins`. Use [include/scmp/plugin.h](include/scmp/plugin.h) and [the Pulse Grid example](examples/plugins/pulse-grid.c) to write a plugin in C or C++. Export `scmp_plugin_v1` and provide any combination of `background`, `visualizer`, and `overlay` callbacks. Each callback receives a clipped terminal canvas, stereo samples, the current mode, and playback information. Backgrounds draw after the selected theme, and overlays draw after the visualizer. If multiple plugins replace the visualizer, the first by filename is used.
+
+Layout plugins export `scmp_plugin_v2` and draw the whole Player screen. Each frame `layout_draw` receives an `ScmpLayout`: the library (tracks with tags, playlists, the visible list and selection), playback state, and callbacks to draw text with foreground and background colors, fill areas, place cover art, and reserve room for the visualizer. `layout_key` sees Player keys first and answers them by sending commands such as play, seek, search or switch playlist; keys it does not handle keep their usual action. [The Spotify-style layout](examples/plugins/spotify-layout.c) is a complete example.
 
 ## Configuration
 

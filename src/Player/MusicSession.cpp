@@ -67,12 +67,37 @@ scmp::MusicSession::~MusicSession() = default;
 scmp::MusicSession::MusicSession(MusicSession &&) noexcept = default;
 scmp::MusicSession &scmp::MusicSession::operator=(MusicSession &&) noexcept = default;
 
-void scmp::MusicSession::open(const std::string &path)
+void scmp::MusicSession::open_folders(const std::vector<std::string> &paths)
 {
-    auto directory = expand_path(path);
-    std::unique_ptr<char, decltype(&std::free)> resolved(realpath(directory.c_str(), nullptr), &std::free);
-    if (resolved) directory = resolved.get();
-    auto tracks = scan_music_directory(directory);
+    std::vector<std::string> folders;
+    std::vector<MusicTrack> tracks;
+    std::string failure;
+    for (const auto &path : paths)
+    {
+        auto directory = expand_path(path);
+        std::unique_ptr<char, decltype(&std::free)> resolved(realpath(directory.c_str(), nullptr), &std::free);
+        if (resolved) directory = resolved.get();
+        if (std::find(folders.begin(), folders.end(), directory) != folders.end()) continue;
+        try
+        {
+            auto found = scan_music_directory(directory);
+            for (auto &track : found)
+            {
+                // A folder inside another one lists each file once, under the first folder.
+                if (std::any_of(tracks.begin(), tracks.end(), [&](const MusicTrack &known) { return known.path == track.path; }))
+                    continue;
+                track.root = folders.size();
+                tracks.push_back(std::move(track));
+            }
+            folders.push_back(directory);
+        }
+        catch (const std::exception &exception)
+        {
+            if (failure.empty()) failure = exception.what();
+        }
+    }
+    if (folders.empty() && !failure.empty()) throw ScmpException("%s", failure.c_str());
+
     const bool preserve = m_active < m_tracks.size();
     const auto active = preserve ? std::find_if(tracks.begin(), tracks.end(), [&](const MusicTrack &track) {
         return track.path == m_tracks[m_active].path;
@@ -90,12 +115,76 @@ void scmp::MusicSession::open(const std::string &path)
     {
         m_active = m_selected = m_playing_track = static_cast<size_t>(active - tracks.begin());
     }
-    m_directory = std::move(directory);
+    m_folders = std::move(folders);
     m_tracks = std::move(tracks);
+    m_playlists.clear();
+    for (size_t i = 0; i < m_folders.size(); ++i)
+    {
+        const auto count = static_cast<size_t>(std::count_if(m_tracks.begin(), m_tracks.end(),
+            [&](const MusicTrack &track) { return track.root == i; }));
+        m_playlists.push_back({m_folders[i].substr(m_folders[i].find_last_of('/') + 1), m_folders[i], count});
+    }
+    if (m_folders.size() > 1) m_playlists.push_back({"All music", "", m_tracks.size()});
+    m_playlist = std::min(m_playlist, m_playlists.empty() ? 0 : m_playlists.size() - 1);
+    m_scope = std::min(m_scope, m_playlists.empty() ? 0 : m_playlists.size() - 1);
     m_tags = std::make_unique<TagLoader>(m_tracks);
-    m_error.clear();
+    m_error = failure;
     reset_order();
     filter("");
+}
+
+void scmp::MusicSession::add_folder(const std::string &path)
+{
+    auto folders = m_folders;
+    folders.push_back(path);
+    open_folders(folders);
+    // Show the new folder: it is the last folder playlist.
+    auto directory = expand_path(path);
+    std::unique_ptr<char, decltype(&std::free)> resolved(realpath(directory.c_str(), nullptr), &std::free);
+    if (resolved) directory = resolved.get();
+    const auto found = std::find(m_folders.begin(), m_folders.end(), directory);
+    if (found != m_folders.end()) set_playlist(static_cast<size_t>(found - m_folders.begin()));
+}
+
+void scmp::MusicSession::remove_folder(size_t index)
+{
+    if (index >= m_folders.size()) return;
+    auto folders = m_folders;
+    folders.erase(folders.begin() + static_cast<std::ptrdiff_t>(index));
+    if (folders.empty())
+    {
+        const auto volume = m_volume;
+        close();
+        m_volume = volume;
+        return;
+    }
+    m_playlist = 0;
+    open_folders(folders);
+}
+
+void scmp::MusicSession::set_playlist(size_t index)
+{
+    if (index >= m_playlists.size()) return;
+    m_playlist = index;
+    filter("");
+}
+
+std::string scmp::MusicSession::playlist_name() const
+{
+    return m_playlist < m_playlists.size() ? m_playlists[m_playlist].name : "";
+}
+
+const std::string &scmp::MusicSession::directory() const
+{
+    static const std::string none;
+    if (m_folders.empty()) return none;
+    return m_playlist < m_folders.size() ? m_folders[m_playlist] : m_folders.front();
+}
+
+bool scmp::MusicSession::in_playlist(size_t track, size_t playlist) const
+{
+    // The last playlist is "All music" when there are several folders.
+    return track < m_tracks.size() && (playlist >= m_folders.size() || m_tracks[track].root == playlist);
 }
 
 void scmp::MusicSession::close()
@@ -150,7 +239,8 @@ void scmp::MusicSession::filter(const std::string &query)
         const auto &track = m_tracks[i];
         const auto tag = needle.empty() ? TrackTags{} : tags(i);
         const auto haystack = track.folder + "/" + track.title + "\n" + tag.title + "\n" + tag.artist;
-        if (needle.empty() || Utils::lowercase(haystack).find(needle) != std::string::npos)
+        if (in_playlist(i, m_playlist) &&
+            (needle.empty() || Utils::lowercase(haystack).find(needle) != std::string::npos))
         {
             m_visible.push_back(i);
         }
@@ -215,6 +305,7 @@ void scmp::MusicSession::play(size_t track, bool follow_selection, double positi
 
 void scmp::MusicSession::play_selected()
 {
+    m_scope = m_playlist;
     play(m_selected, false);
 }
 
@@ -238,13 +329,21 @@ size_t scmp::MusicSession::neighbor(size_t track, int offset, bool wrap) const
     const auto found = std::find(m_order.begin(), m_order.end(), track);
     if (found == m_order.end()) return none;
     const auto count = static_cast<int64_t>(m_order.size());
-    auto next = static_cast<int64_t>(found - m_order.begin()) + offset;
-    if (next < 0 || next >= count)
+    const auto step = offset < 0 ? -1 : 1;
+    auto remaining = std::abs(offset);
+    auto next = static_cast<int64_t>(found - m_order.begin());
+    // Walk the play order, counting only tracks in the playlist the music was started from.
+    for (int64_t visited = 0; remaining > 0 && visited < count; ++visited)
     {
-        if (!wrap) return none;
-        next = (next % count + count) % count;
+        next += step;
+        if (next < 0 || next >= count)
+        {
+            if (!wrap) return none;
+            next = (next % count + count) % count;
+        }
+        if (in_playlist(m_order[static_cast<size_t>(next)], m_scope)) --remaining;
     }
-    return m_order[static_cast<size_t>(next)];
+    return remaining == 0 ? m_order[static_cast<size_t>(next)] : none;
 }
 
 void scmp::MusicSession::play_neighbor(int offset)
@@ -333,6 +432,7 @@ void scmp::MusicSession::restore(const SessionState &state)
         }) - m_tracks.begin());
     };
     m_volume = std::max(0.0, std::min(1.0, state.volume));
+    m_playlist = m_scope = std::min(state.playlist, m_playlists.empty() ? 0 : m_playlists.size() - 1);
     if (m_player) m_player->set_volume(m_volume);
     m_repeat = state.repeat == 1 ? RepeatMode::All : state.repeat == 2 ? RepeatMode::One : RepeatMode::Off;
     m_selected = find(state.selection);
@@ -344,7 +444,8 @@ void scmp::MusicSession::restore(const SessionState &state)
 
 void scmp::MusicSession::remember(SessionState &state) const
 {
-    state.folder = m_directory;
+    state.folder = join_folders(m_folders);
+    state.playlist = m_playlist;
     state.selection = m_selected < m_tracks.size() ? m_tracks[m_selected].path : "";
     state.filter = m_query;
     const bool active = m_active < m_tracks.size() && !m_player->finished();

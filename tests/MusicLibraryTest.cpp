@@ -43,3 +43,16 @@ TEST(MusicLibraryTest, FindsLocalAudioInSubfoldersWithoutFollowingDirectoryCycle
     rmdir(root.c_str());
     EXPECT_THROW(scmp::scan_music_directory(root), scmp::ScmpException);
 }
+
+TEST(MusicLibraryTest, SplitsAndJoinsFolderLists)
+{
+    EXPECT_TRUE(scmp::split_folders("none").empty());
+    EXPECT_TRUE(scmp::split_folders("").empty());
+    const auto folders = scmp::split_folders(" ~/Music ,~/Downloads/Albums, ,/Volumes/Music Drive ");
+    ASSERT_EQ(folders.size(), 3u);
+    EXPECT_EQ(folders[0], "~/Music");
+    EXPECT_EQ(folders[1], "~/Downloads/Albums");
+    EXPECT_EQ(folders[2], "/Volumes/Music Drive");
+    EXPECT_EQ(scmp::join_folders(folders), "~/Music, ~/Downloads/Albums, /Volumes/Music Drive");
+    EXPECT_EQ(scmp::join_folders({}), "none");
+}
