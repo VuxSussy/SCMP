@@ -7,6 +7,7 @@
 #include "Writer/Wallpaper.h"
 #include <scmp/plugin.h>
 #include <array>
+#include <chrono>
 #include <csignal>
 #include <memory>
 #include <utility>
@@ -106,6 +107,8 @@ class StudioView
     PixelImage m_background;
     bool m_theme_motion;
     bool m_show_background = false;
+    std::vector<uint32_t> m_pixels;
+    std::chrono::steady_clock::time_point m_scene_started = std::chrono::steady_clock::now();
     std::unique_ptr<WINDOW, DeleteWindow> m_stage;
     std::unique_ptr<WINDOW, DeleteWindow> m_visualizer;
 #ifdef _OS_OSX

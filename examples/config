@@ -10,7 +10,7 @@
 ##Set to a music directory on macOS, or none for system audio at launch.
 #music.directory=~/Music
 
-##Wallpaper scene. On macOS auto uses Moonlit.
+##Wallpaper scene. auto uses Moonlit on macOS and Cat Window elsewhere.
 #theme.name=auto
 #theme.motion=true
 ##Use an image as the backdrop. Set to none to use the selected scene.
