@@ -30,8 +30,7 @@ class StudioView
     {
         void operator()(WINDOW *window) const { delwin(window); }
     };
-    void draw_playlist(const MusicSession &music, int x, int width, int top, int height,
-                       bool compact_preview);
+    void draw_playlist(const MusicSession &music, int x, int width, int top, int height);
     void draw_track_preview(const MusicSession &music, int x, int width, int top, int height);
     void draw_background(const std::string &scene, int stage_x, int top, int bottom, bool stage_visible);
     void draw_label(WINDOW *surface, int row, int column, int width, const std::string &text,

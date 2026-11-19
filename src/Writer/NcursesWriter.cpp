@@ -60,6 +60,18 @@ void scmp::NcursesWriter::set_colors(WINDOW *window, int foreground, int backgro
                                ? COLOR_PAIR(foreground) : A_NORMAL));
 }
 
+#if defined(NCURSES_EXT_COLORS)
+static bool light_background(int color)
+{
+    if (color >= 232) return color >= 243;
+    if (color < 16) return false;
+    const int cube = color - 16;
+    static const double luminance[] = {0, .114, .242, .429, .680, 1};
+    return .2126 * luminance[cube / 36] + .7152 * luminance[cube / 6 % 6] +
+           .0722 * luminance[cube % 6] > .179;
+}
+#endif
+
 void scmp::NcursesWriter::write_over(WINDOW *window, int row, int column, const std::wstring &text,
                                    attr_t style)
 {
@@ -94,7 +106,8 @@ void scmp::NcursesWriter::write_over(WINDOW *window, int row, int column, const 
         {
             extended_pair_content(previous.ext_color, &previous_foreground, &background);
         }
-        set_colors(window, foreground ? foreground : -1, background, style & ~A_COLOR);
+        const int ink = foreground ? foreground : light_background(background) ? 16 : -1;
+        set_colors(window, ink, background, style & ~A_COLOR);
         mvwaddnwstr(window, row, column, text.data() + i, static_cast<int>(count));
         i += count;
         column += cells;

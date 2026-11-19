@@ -2,6 +2,34 @@
 
 SCMP is a terminal music player with a local library, Spotify playlist import, and an audio visualizer. On macOS, SCMP plays local files and can visualize system audio. On Linux, the visualizer reads PCM from MPD.
 
+![Player view](docs/screenshots/player.png)
+
+## Features
+
+- **Player**: browse a local music folder, filter, and play tracks with cover art and album details.
+- **Visualizer**: spectrum, spectrum circle, ellipse, Lorenz, and lava effects, driven by the playing track, Mac system audio, or MPD.
+- **Wallpapers**: animated ASCII and pixel scenes behind the visualizer, or your own image.
+- **Spotify import**: download a public playlist into a local folder (macOS).
+- **Settings and plugins**: an in-terminal settings editor and native C/C++ plugins.
+
+## Screenshots
+
+| Visualizer: spectrum | Visualizer: ellipse |
+| --- | --- |
+| ![Spectrum visualizer](docs/screenshots/visualizer-spectrum.png) | ![Ellipse visualizer](docs/screenshots/visualizer-ellipse.png) |
+
+| Wallpaper picker (`T`) | Settings (`s`) |
+| --- | --- |
+| ![Wallpaper picker](docs/screenshots/wallpaper-picker.png) | ![Settings editor](docs/screenshots/settings.png) |
+
+## Quick start
+
+```sh
+brew install fftw ncurses
+make
+./build/scmp --view player --music "$HOME/Music"
+```
+
 - [Build and install](#build-and-install)
 - [MPD setup](#mpd-setup)
 - [Controls](#controls)
@@ -79,7 +107,7 @@ scmp --view player --music "$HOME/Music/My Albums"
 
 `↑`/`↓` or `j`/`k` moves the selection. Enter plays it and Space pauses or resumes. Use `/` to filter by filename or folder, Esc to clear the filter, and `C` to jump to the playing track. The highlight marks your selection and ▶ marks the playing track. Playback advances through the full folder in filename order.
 
-Player shows a bordered visualizer beside the playlist in wide terminals and below it in narrower terminals with enough rows. Press `v` to change the effect in either view. Press `1` for the full-screen Visualizer, `2` for the Player, or Tab to switch. Switching views preserves the current track and its position. The Visualizer uses the current local track when one is loaded. Before a local track is loaded, it uses the configured live source, which defaults to Mac system audio on macOS. Press `r` in the Visualizer to reconnect a live source.
+Player shows the selected track’s cover and album details above the playlist when there is room. The bordered visualizer sits to the right in wide terminals and below the playlist in narrower ones. Press `v` to change the effect in either view. Press `1` for the full-screen Visualizer, `2` for the Player, or Tab to switch. Switching views preserves the current track and its position. The Visualizer uses the current local track when one is loaded. Before a local track is loaded, it uses the configured live source, which defaults to Mac system audio on macOS. Press `r` in the Visualizer to reconnect a live source.
 
 With `--music DIR`, the app starts in the Player when that folder has tracks and in the Visualizer when it is empty. Use `--view visualizer` or `--view player` to choose the opening view. Use `n`/`N` for next/previous and `v` for the next visualizer effect. Press `o` in either view to open a folder in the Player.
 

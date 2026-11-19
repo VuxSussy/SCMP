@@ -38,7 +38,7 @@ std::string scene_label(const std::string &theme)
     return found == catalog.end() ? "" : found->label;
 }
 
-int rgb_color(uint32_t rgb, double level, bool retain_chroma = true)
+int rgb_color(uint32_t rgb, double level)
 {
     const int r = static_cast<int>(((rgb >> 16) & 0xff) * level);
     const int g = static_cast<int>(((rgb >> 8) & 0xff) * level);
@@ -57,8 +57,26 @@ int rgb_color(uint32_t rgb, double level, bool retain_chroma = true)
     const int cube_error = square(r - steps[ri]) + square(g - steps[gi]) + square(b - steps[bi]);
     const bool low_chroma = std::max({r, g, b}) - std::min({r, g, b}) < 28;
     const bool neutral_cube = ri == gi && gi == bi;
-    return gray_error < cube_error && (!retain_chroma || low_chroma || neutral_cube)
+    return gray_error < cube_error && (low_chroma || neutral_cube)
         ? 232 + gray : 16 + 36 * ri + 6 * gi + bi;
+}
+
+int wallpaper_color(uint32_t rgb)
+{
+    const double r = (rgb >> 16) & 0xff;
+    const double g = (rgb >> 8) & 0xff;
+    const double b = rgb & 0xff;
+    const double luminance = .2126 * r + .7152 * g + .0722 * b;
+    // Add saturation around the existing luminance and bound all three channels together.
+    const double dark = luminance - std::min({r, g, b});
+    const double light = std::max({r, g, b}) - luminance;
+    double saturation = 1.30;
+    if (dark > 0) saturation = std::min(saturation, luminance / dark);
+    if (light > 0) saturation = std::min(saturation, (255 - luminance) / light);
+    const auto channel = [&](double value) {
+        return static_cast<uint32_t>(std::round(luminance + (value - luminance) * saturation));
+    };
+    return rgb_color((channel(r) << 16) | (channel(g) << 8) | channel(b), 1.0);
 }
 
 uint32_t ansi_rgb(int index)
@@ -319,38 +337,19 @@ WINDOW *scmp::StudioView::begin_frame(const MusicSession &music, ViewMode view, 
     if (!stage && width >= 96)
     {
         const int list_width = std::min(76, content_width * 2 / 5);
-        const bool show_details = content_height >= 22 && !music.visible_tracks().empty();
-        const int details_height = show_details ? std::min(19, content_height / 2) : 0;
-        draw_playlist(music, stage_x, list_width, header, content_height, !show_details);
+        draw_playlist(music, stage_x, list_width, header, content_height);
         for (int row = header; row < bottom; ++row)
         {
             m_writer.write_over(stdscr, row, list_width + 3, L"│", A_DIM);
         }
-        canvas = {list_width + 6, header + details_height,
-                  content_width - list_width - 4, content_height - details_height};
-        if (show_details)
-        {
-            draw_track_preview(music, canvas.x, canvas.width, header, details_height);
-        }
+        canvas = {list_width + 6, header, content_width - list_width - 4, content_height};
     }
     else if (!stage)
     {
         const int graph_height = content_height >= 9 ? std::min(11, std::max(5, content_height / 3)) : 0;
         const int list_height = content_height - graph_height - (graph_height ? 1 : 0);
-        const bool side_cover = width >= 64 && graph_height >= 5 && !music.visible_tracks().empty();
-        const int cover_height = std::min(9, graph_height);
-        const int cover_width = side_cover ? cover_height * 2 : 0;
-        draw_playlist(music, stage_x, content_width, header, list_height, !side_cover);
-        const int cover_space = side_cover ? cover_width + 2 : 0;
-        canvas = {stage_x + cover_space, bottom - graph_height, content_width - cover_space, graph_height};
-        if (side_cover)
-        {
-            const int x = stage_x;
-            const int y = canvas.y + (graph_height - cover_height) / 2;
-            const auto &cover = music.details().cover;
-            if (!m_album_art.place(cover, music.tracks()[music.selected()].path, y, x, cover_width, cover_height))
-                draw_cover(stdscr, y, x, cover_width, cover_height, cover);
-        }
+        draw_playlist(music, stage_x, content_width, header, list_height);
+        canvas = {stage_x, bottom - graph_height, content_width, graph_height};
     }
 
     const auto *player = music.player();
@@ -425,10 +424,17 @@ WINDOW *scmp::StudioView::begin_frame(const MusicSession &music, ViewMode view, 
     return m_stage.get();
 }
 
-void scmp::StudioView::draw_playlist(const MusicSession &music, int x, int width, int top, int height,
-                                    bool compact_preview)
+void scmp::StudioView::draw_playlist(const MusicSession &music, int x, int width, int top, int height)
 {
     const auto &visible = music.visible_tracks();
+    if (!visible.empty() && height >= 8)
+    {
+        const int preview_height = std::min({14, std::max(3, height / 4), (width - 16) / 2});
+        draw_track_preview(music, x, width, top, preview_height);
+        m_writer.write_over(stdscr, top + preview_height, x, std::wstring(width, L'─'), A_DIM);
+        top += preview_height + 1;
+        height -= preview_height + 1;
+    }
     const auto &tracks = music.tracks();
     const auto count = music.query().empty() ? std::to_string(tracks.size())
         : std::to_string(visible.size()) + "/" + std::to_string(tracks.size());
@@ -447,9 +453,8 @@ void scmp::StudioView::draw_playlist(const MusicSession &music, int x, int width
         return;
     }
 
-    const int preview_height = compact_preview && height >= 12 ? std::min(5, height / 4) : 0;
     const int first_row = top + 2;
-    const int list_rows = std::max(1, height - 2 - (preview_height ? preview_height + 1 : 0));
+    const int list_rows = std::max(1, height - 2);
     const size_t capacity = static_cast<size_t>(list_rows);
     const auto selection = music.selected_row();
     m_queue_start = std::min(m_queue_start, visible.size() > capacity ? visible.size() - capacity : 0);
@@ -479,44 +484,23 @@ void scmp::StudioView::draw_playlist(const MusicSession &music, int x, int width
         const auto prefix = (playing ? "▶ " : "  ") + std::string(digits - number.size(), ' ') + number + "   ";
         draw_label(stdscr, y, x, width, prefix + title, style);
     }
-
-    if (preview_height)
-    {
-        const int preview_y = top + height - preview_height;
-        m_writer.write_over(stdscr, preview_y - 1, x, std::wstring(width, L'─'), A_DIM);
-        const int image_width = preview_height * 2;
-        const auto &details = music.details();
-        if (!m_album_art.place(details.cover, tracks[music.selected()].path, preview_y, x, image_width, preview_height))
-            draw_cover(stdscr, preview_y, x, image_width, preview_height, details.cover);
-        const int label_x = x + image_width + 2;
-        const int label_width = width - image_width - 2;
-        draw_label(stdscr, preview_y, label_x, label_width, details.title, A_BOLD);
-        draw_label(stdscr, preview_y + 1, label_x, label_width, details.artist, A_DIM);
-        draw_label(stdscr, preview_y + 2, label_x, label_width,
-                  details.album.empty() ? tracks[music.selected()].folder : details.album, A_DIM);
-        draw_label(stdscr, preview_y + 3, label_x, label_width,
-                  std::to_string(selection + 1) + " / " + std::to_string(visible.size()), A_DIM);
-    }
 }
 
 void scmp::StudioView::draw_track_preview(const MusicSession &music, int x, int width, int top, int height)
 {
     const auto &details = music.details();
-    draw_label(stdscr, top, x, width, "Selected track", A_BOLD);
-    const int art_height = std::min({16, (width - 24) / 2, height - 3});
-    const int art_width = art_height * 2;
-    const int row = top + 2;
-    if (!m_album_art.place(details.cover, music.tracks()[music.selected()].path, row, x, art_width, art_height))
-        draw_cover(stdscr, row, x, art_width, art_height, details.cover);
+    const int art_width = height * 2;
+    if (!m_album_art.place(details.cover, music.tracks()[music.selected()].path, top, x, art_width, height))
+        draw_cover(stdscr, top, x, art_width, height, details.cover);
 
     const int label_x = x + art_width + 2;
     const int label_width = width - art_width - 2;
-    draw_label(stdscr, row, label_x, label_width, details.title, A_BOLD);
-    draw_label(stdscr, row + 1, label_x, label_width, details.artist, A_DIM);
+    draw_label(stdscr, top, label_x, label_width, details.title, A_BOLD);
+    draw_label(stdscr, top + 1, label_x, label_width, details.artist, A_DIM);
     const auto &album = details.album.empty() ? music.tracks()[music.selected()].folder : details.album;
     if (album != details.title)
     {
-        draw_label(stdscr, row + 2, label_x, label_width, album, A_DIM);
+        draw_label(stdscr, top + 2, label_x, label_width, album, A_DIM);
     }
 }
 
@@ -579,7 +563,7 @@ void scmp::StudioView::draw_background(const std::string &scene, int stage_x, in
     const auto veil = [&](int x, int y) {
         if (!stage_visible || y < top || y >= bottom || x < stage_x || x >= cols - stage_x)
         {
-            return stage_visible ? .60 : .42 * .70;
+            return stage_visible ? .60 : .42;
         }
         const int gx = x - stage_x - graph.x;
         const int gy = y - top - graph.y;
@@ -601,7 +585,7 @@ void scmp::StudioView::draw_background(const std::string &scene, int stage_x, in
                     const auto ink = cell.foreground_and_glyph;
                     const double light = veil(x * 2, y);
                     const int fg = COLORS >= 256 ? rgb_color(ink & 0xffffff, light) : COLOR_CYAN;
-                    const int bg = COLORS >= 256 ? rgb_color(cell.background, light, stage_visible) : -1;
+                    const int bg = COLORS >= 256 ? wallpaper_color(cell.background) : -1;
                     const char tile[] = {light < .65 ? ' ' : static_cast<char>(ink >> 24), ' ', '\0'};
                     m_writer.set_colors(surface, fg, bg);
                     mvwaddnstr(surface, y, x * 2, tile, std::min(2, cols - x * 2));
@@ -616,12 +600,11 @@ void scmp::StudioView::draw_background(const std::string &scene, int stage_x, in
     {
         for (int x = 0; x < cols; ++x)
         {
-            const double light = veil(x, y);
             const auto rgb = m_show_background
                 ? sample_image(m_background, (x + 0.5) / cols, (y + 0.5) / rows,
                                static_cast<double>(cols) / (2 * rows))
                 : ansi_rgb(scene_color(scene, x, y, cols, rows));
-            const int color = rgb_color(rgb, light * (m_show_background ? .85 : 1.0), stage_visible);
+            const int color = wallpaper_color(rgb);
             if (COLORS >= 256)
             {
                 m_writer.set_colors(surface, color, color);
@@ -632,7 +615,7 @@ void scmp::StudioView::draw_background(const std::string &scene, int stage_x, in
                 const int basic = scene == "night-drive" ? COLOR_MAGENTA : COLOR_BLUE;
                 const uint32_t pattern = (static_cast<uint32_t>(x) * 55503u) ^
                                          (static_cast<uint32_t>(y) * 17431u);
-                const int density = 1 + color % 3;
+                const int density = 1 + rgb_color(rgb, veil(x, y)) % 3;
                 if (static_cast<int>(pattern % 5) < density)
                 {
                     pixel(surface, y, x, basic, L'·');
