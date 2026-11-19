@@ -154,11 +154,11 @@ SCMP remembers the last view, layout, effect, wallpaper choice, folder, filter, 
 
 Album covers appear as inline images in kitty and Ghostty (kitty graphics), iTerm2 and WezTerm (iTerm2 inline images), and foot, mlterm, Konsole and other sixel terminals. Set `SCMP_IMAGE_PROTOCOL` to `kitty`, `iterm`, `sixel` or `none` to override the detection. Inside tmux and screen, and in other terminals, SCMP uses the character-cell preview. The playlist reads the selected track's embedded cover, including MP3, M4A, and FLAC artwork. It also looks for `cover`, `folder`, `front`, and `album` JPEG or PNG files beside the track. A pixel record appears when no cover is found.
 
-On macOS, the wallpaper picker (`T`) includes the 12 animated ASCII scenes from [Claude Desktop Themes](https://github.com/0toshigami/claude-desktop-themes), including Moonlit, Koi Pond, and Sakura Dusk. The wallpaper fills the window and dims slightly behind the playlist so titles stay readable. A border marks the effect area and shows the current mode and signal status. The audio source appears under the Visualizer tab. Press `t` to cycle scenes and use `theme.motion=false` to pause wallpaper animation. The original pixel scenes and local image backgrounds are also available. Use a 256-color terminal for the full palette.
+The wallpaper picker (`T`) offers animated pixel scenes on every platform: Cat Window (a cat on the sill watching the moon rise), Torii Gate (a shrine gate in still water with drifting petals), Sunset, Day Drive (a car driving from morning through afternoon into night), Lighthouse, and Rainy City, plus the static Night Drive, Alpine, and Orbit. Each terminal cell shows two stacked pixels, so the scenes stay sharp. On macOS it also includes 11 animated ASCII scenes such as Moonlit, Koi Pond, and Sakura Dusk, inspired by [Claude Desktop Themes](https://github.com/0toshigami/claude-desktop-themes). The wallpaper fills the window and dims slightly behind the playlist so titles stay readable. A border marks the effect area and shows the current mode and signal status. The audio source appears under the Visualizer tab. Press `t` to cycle scenes and use `theme.motion=false` to pause wallpaper animation. Local image backgrounds are also available. Use a 256-color terminal for the full palette.
 
 ```sh
 scmp --view visualizer --theme koi-pond --mode spectrum
-scmp --set theme.name=moonlit
+scmp --set theme.name=cat-window
 scmp --set "theme.background=$HOME/Pictures/pixel-room.png"
 scmp --set theme.background=none
 ```

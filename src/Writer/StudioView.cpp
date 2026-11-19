@@ -83,17 +83,6 @@ int wallpaper_color(uint32_t rgb)
     return rgb_color((channel(r) << 16) | (channel(g) << 8) | channel(b), 1.0);
 }
 
-uint32_t ansi_rgb(int index)
-{
-    if (index >= 232)
-    {
-        return static_cast<uint32_t>(8 + (index - 232) * 10) * 0x010101;
-    }
-    const int cube = std::max(0, index - 16);
-    static const uint32_t values[] = {0, 95, 135, 175, 215, 255};
-    return (values[cube / 36] << 16) | (values[(cube / 6) % 6] << 8) | values[cube % 6];
-}
-
 void pixel(WINDOW *window, int row, int col, int color, wchar_t glyph = L'█')
 {
     const wchar_t cell[] = {glyph, L'\0'};
@@ -143,59 +132,6 @@ void draw_cover(WINDOW *surface, int row, int x, int width, int height,
         }
     }
     wattrset(surface, A_NORMAL);
-}
-
-int scene_color(const std::string &scene, int col, int row, int width, int height)
-{
-    const double x = (col + 0.5) / width;
-    const double y = (row + 0.5) / height;
-    const uint32_t grain = (static_cast<uint32_t>(col) * 374761393u) ^
-                           (static_cast<uint32_t>(row) * 668265263u);
-    const bool star = (grain ^ (grain >> 13)) % 79 == 0;
-    if (scene == "night-drive")
-    {
-        const double sun = std::hypot((x - 0.52) * width / (2.0 * height), y - 0.31);
-        if (y > 0.57)
-        {
-            const double road = std::abs(x - 0.52);
-            const double spread = (y - 0.57) * 0.76;
-            if (std::abs(road - spread) < 0.012) return 60;
-            if (road < spread)
-                return road < 0.008 && row % 3 == 0 ? 97 : 235;
-            return row % 3 == 0 ? 54 : 17;
-        }
-        if (y > 0.41 + 0.13 * (grain >> 6 & 7) / 7.0 && std::abs(x - 0.52) > 0.20)
-        {
-            return star ? 103 : 235;
-        }
-        if (sun < 0.24 && (y < 0.32 || row % 3 != 0))
-        {
-            return y < 0.26 ? 126 : y < 0.36 ? 90 : 54;
-        }
-        return star ? 61 : (y < 0.23 ? 17 : y < 0.45 ? 53 : 54);
-    }
-    if (scene == "alpine")
-    {
-        const double peaks = 0.54 - 0.28 * std::max({0.0, 1 - std::abs(x - 0.27) * 4.8,
-                                                          1 - std::abs(x - 0.73) * 4.0});
-        if (y > 0.66) return (row + (grain % 3)) % 5 == 0 ? 24 : 17;
-        if (y > 0.57 - (std::max(0.0, 1 - std::abs(x - 0.50) * 3.5) * 0.12)) return 23;
-        if (y > peaks) return y < peaks + 0.08 ? 67 : 24;
-        return star ? 67 : (y < 0.23 ? 17 : 18);
-    }
-    if (scene == "orbit")
-    {
-        const double dx = (x - 0.73) * width / (2.0 * height);
-        const double dy = y - 0.51;
-        const double planet = std::hypot(dx, dy);
-        const double ring = std::hypot(dx, (dy + 0.26 * dx) * 3.2);
-        if (ring > 0.27 && ring < 0.40 && (planet > 0.20 || dy > 0))
-            return ring > 0.34 ? 59 : 60;
-        if (planet < 0.20)
-            return dx - dy < -0.05 ? 60 : (dx - dy < 0.07 ? 54 : 17);
-        return star ? 103 : (y < 0.34 ? 234 : 17);
-    }
-    return -1;
 }
 
 std::string timestamp(double seconds)
@@ -756,8 +692,26 @@ void scmp::StudioView::draw_background(const std::string &scene, int stage_x, in
         const int gy = y - top - graph.y;
         return gx >= 0 && gx < graph.width && gy >= 0 && gy < graph.height ? .62 : 1.0;
     };
+    // Native pixel scenes and custom images use two stacked pixels per cell.
+    const int height = rows * 2;
+    const double seconds = m_theme_motion
+        ? std::chrono::duration<double>(std::chrono::steady_clock::now() - m_scene_started).count() : 0.0;
+    bool native = false;
+    if (m_show_background)
+    {
+        m_pixels.resize(static_cast<size_t>(cols) * static_cast<size_t>(height));
+        for (int y = 0; y < height; ++y)
+            for (int x = 0; x < cols; ++x)
+                m_pixels[static_cast<size_t>(y * cols + x)] = sample_image(
+                    m_background, (x + 0.5) / cols, (y + 0.5) / height, static_cast<double>(cols) / height);
+        native = true;
+    }
+    else
+    {
+        native = render_scene(scene, cols, height, seconds, m_pixels);
+    }
 #ifdef _OS_OSX
-    if (!m_show_background && scene != "night-drive" && scene != "alpine" && scene != "orbit")
+    if (!native)
     {
         // Two terminal columns approximate one square wallpaper cell.
         const int cells = (cols + 1) / 2;
@@ -785,26 +739,30 @@ void scmp::StudioView::draw_background(const std::string &scene, int stage_x, in
         return;
     }
 #endif
+    if (!native) return;
     for (int y = 0; y < rows; ++y)
     {
         for (int x = 0; x < cols; ++x)
         {
-            const auto rgb = m_show_background
-                ? sample_image(m_background, (x + 0.5) / cols, (y + 0.5) / rows,
-                               static_cast<double>(cols) / (2 * rows))
-                : ansi_rgb(scene_color(scene, x, y, cols, rows));
-            const int color = dimmed(x, y) ? rgb_color(ansi_rgb(wallpaper_color(rgb)), dim_level) : wallpaper_color(rgb);
+            const auto upper_rgb = m_pixels[static_cast<size_t>(y * 2 * cols + x)];
+            const auto lower_rgb = m_pixels[static_cast<size_t>((y * 2 + 1) * cols + x)];
+            const bool dim = dimmed(x, y);
+            const auto shade = [&](uint32_t rgb) {
+                return dim ? rgb_color(ansi_rgb(wallpaper_color(rgb)), dim_level) : wallpaper_color(rgb);
+            };
             if (COLORS >= 256)
             {
-                m_writer.set_colors(surface, color, color);
-                mvwaddch(surface, y, x, ' ');
+                const int upper = shade(upper_rgb), lower = shade(lower_rgb);
+                m_writer.set_colors(surface, upper, lower);
+                if (upper == lower) mvwaddch(surface, y, x, ' ');
+                else mvwaddnwstr(surface, y, x, L"▀", 1);
             }
             else
             {
                 const int basic = scene == "night-drive" ? COLOR_MAGENTA : COLOR_BLUE;
                 const uint32_t pattern = (static_cast<uint32_t>(x) * 55503u) ^
                                          (static_cast<uint32_t>(y) * 17431u);
-                const int density = 1 + rgb_color(rgb, veil(x, y)) % 3;
+                const int density = 1 + rgb_color(upper_rgb, veil(x, y)) % 3;
                 if (static_cast<int>(pattern % 5) < density)
                 {
                     pixel(surface, y, x, basic, L'·');

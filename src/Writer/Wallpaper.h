@@ -16,6 +16,11 @@ struct Theme
 const std::vector<Theme> &themes();
 const std::string &theme_choices();
 
+// Renders a native pixel scene as width x height RGB pixels at the given time.
+// Returns false for scenes that are not drawn natively.
+bool render_scene(const std::string &scene, int width, int height, double seconds, std::vector<uint32_t> &pixels);
+uint32_t ansi_rgb(int index);
+
 #ifdef _OS_OSX
 struct WallpaperCell
 {

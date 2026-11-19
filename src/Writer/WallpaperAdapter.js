@@ -4,7 +4,6 @@ const root = { dataset: {} };
 
 const skyStops = {
   moonlit:        [['#1a2a5e', '#0d1530', '#090f24'], .75, .10],
-  clawd:          [['#3a2219', '#1f1714', '#150f0d'], .70, .30],
   'cloud-drift':  [['#4fa3e8', '#86c3f0', '#b6dbf6']],
   'honu-lagoon':  [['#35a6f0', '#1d7ad8', '#1650b2']],
   'koi-pond':     [['#4aa08c', '#2f8070', '#1f6156']],
