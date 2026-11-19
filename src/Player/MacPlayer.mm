@@ -253,6 +253,7 @@ class MacPlayer final : public scmp::LocalPlayer
             {
                 throw scmp::ScmpException("Could not start audio output (%s)", error.localizedDescription.UTF8String);
             }
+            next->player.volume = static_cast<float>(m_volume);
             m_playback = std::move(next);
             if (start) [m_playback->player play];
         }
@@ -314,8 +315,20 @@ class MacPlayer final : public scmp::LocalPlayer
         return playing() && m_playback->samples->read(buffer, count);
     }
 
+    void set_volume(double volume) override
+    {
+        m_volume = std::max(0.0, std::min(1.0, volume));
+        if (m_playback) m_playback->player.volume = static_cast<float>(m_volume);
+    }
+
+    double volume() const override
+    {
+        return m_volume;
+    }
+
   private:
     std::unique_ptr<Playback> m_playback;
+    double m_volume = 1.0;
 };
 }
 
@@ -325,6 +338,32 @@ scmp::PixelImage scmp::load_pixel_image(const std::string &path)
     {
         return decode_image(CGImageSourceCreateWithURL((__bridge CFURLRef)file_url(path), nullptr));
     }
+}
+
+scmp::TrackTags scmp::load_track_tags(const MusicTrack &track)
+{
+    TrackTags tags;
+    @autoreleasepool
+    {
+        auto asset = [AVURLAsset URLAssetWithURL:file_url(track.path) options:nil];
+        for (AVMetadataItem *item in asset.commonMetadata)
+        {
+            if ([item.commonKey isEqualToString:AVMetadataCommonKeyTitle] && item.stringValue.length)
+            {
+                tags.title = from_ns(item.stringValue);
+            }
+            else if ([item.commonKey isEqualToString:AVMetadataCommonKeyArtist] && item.stringValue.length)
+            {
+                tags.artist = from_ns(item.stringValue);
+            }
+        }
+        auto file = [[AVAudioFile alloc] initForReading:file_url(track.path) error:nil];
+        if (file && file.processingFormat.sampleRate > 0)
+        {
+            tags.duration = file.length / file.processingFormat.sampleRate;
+        }
+    }
+    return tags;
 }
 
 scmp::TrackDetails scmp::load_track_details(const MusicTrack &track)

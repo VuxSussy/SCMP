@@ -1,18 +1,24 @@
 # SCMP - Sussy's CLI Music Player
 
-SCMP is a terminal music player with a local library, Spotify playlist import, and an audio visualizer. On macOS, SCMP plays local files and can visualize system audio. On Linux, the visualizer reads PCM from MPD.
+[![CI](https://github.com/VuxSussy/SCMP/actions/workflows/ci.yml/badge.svg)](https://github.com/VuxSussy/SCMP/actions/workflows/ci.yml)
 
-![Player view](docs/screenshots/player.png)
+SCMP is a terminal music player with a local library, Spotify playlist import, and an audio visualizer. It plays local files on macOS and Linux. On macOS it can also visualize system audio, and on Linux the visualizer can read PCM from MPD.
+
+![SCMP demo](docs/screenshots/demo.gif)
 
 ## Features
 
-- **Player**: browse a local music folder, filter, and play tracks with cover art and album details.
+- **Player**: browse a local music folder with title, artist and length columns read from tags. Filter, seek, change volume, shuffle, and repeat. Volume and modes are remembered.
+- **Cover art**: real images in kitty, Ghostty, iTerm2, WezTerm and sixel terminals, with a character-cell preview elsewhere.
+- **Media keys**: on macOS, play/pause, next and previous keys, headphone buttons and the Now Playing widget control SCMP.
 - **Visualizer**: spectrum, spectrum circle, ellipse, Lorenz, and lava effects, driven by the playing track, Mac system audio, or MPD.
-- **Wallpapers**: animated ASCII and pixel scenes behind the visualizer, or your own image.
+- **Wallpapers**: animated ASCII and pixel scenes across the whole window, dimmed behind the playlist, or your own image.
 - **Spotify import**: download a public playlist into a local folder (macOS).
 - **Settings and plugins**: an in-terminal settings editor and native C/C++ plugins.
 
 ## Screenshots
+
+![Player view](docs/screenshots/player.png)
 
 | Visualizer: spectrum | Visualizer: ellipse |
 | --- | --- |
@@ -23,6 +29,16 @@ SCMP is a terminal music player with a local library, Spotify playlist import, a
 | ![Wallpaper picker](docs/screenshots/wallpaper-picker.png) | ![Settings editor](docs/screenshots/settings.png) |
 
 ## Quick start
+
+On macOS, install with Homebrew from this repository:
+
+```sh
+brew tap vuxsussy/scmp https://github.com/VuxSussy/SCMP
+brew install --HEAD vuxsussy/scmp/scmp
+scmp --view player --music "$HOME/Music"
+```
+
+Or build from source:
 
 ```sh
 brew install fftw ncurses
@@ -53,7 +69,7 @@ make
 
 On macOS 14.2 or later, SCMP can visualize system audio through a Core Audio tap. Play some audio and grant System Audio Recording when macOS prompts. Manage the grant in **System Settings → Privacy & Security → Screen & System Audio Recording**.
 
-On Linux, install the FFTW and ncurses development packages, then run `make`. For Debian and Ubuntu, the packages are `libfftw3-dev` and `libncurses-dev`.
+On Linux, install the FFTW and ncurses development packages, then run `make`. For Debian and Ubuntu, the packages are `libfftw3-dev` and `libncurses-dev`. Local playback on Linux also needs FFmpeg (`ffmpeg` and `ffprobe`) and an audio client: `pacat` from PulseAudio or PipeWire, `pw-cat`, or ALSA's `aplay`, tried in that order. Set `SCMP_AUDIO_SINK` to use another command that reads 48 kHz stereo s16le PCM on stdin.
 
 Run `./install.sh` to install both executables in `/usr/local/bin` and seed `~/.scmp/config` and `~/.scmp/colors`. The Spotify command has its own dependencies listed below.
 
@@ -90,6 +106,11 @@ Start directly in Lava with `scmp --mode lava`. Move the mouse inside the lava s
 | <kbd>Tab</kbd> | toggle between Visualizer and Player |
 | <kbd>v</kbd> | cycle visualizer effects |
 | <kbd>space</kbd> | pause or resume local playback |
+| <kbd>←</kbd> / <kbd>→</kbd> | seek 5 seconds back / forward |
+| <kbd>+</kbd> / <kbd>-</kbd> | volume up / down |
+| <kbd>n</kbd> / <kbd>N</kbd> | next / previous track |
+| <kbd>z</kbd> | shuffle on or off |
+| <kbd>R</kbd> | repeat off → all → one |
 | <kbd>o</kbd> | open a local music folder |
 | <kbd>i</kbd> | import a public Spotify playlist and open the downloads in Player (macOS) |
 | <kbd>t</kbd> / <kbd>T</kbd> | cycle wallpapers / open the wallpaper picker |
@@ -99,7 +120,7 @@ Start directly in Lava with `scmp --mode lava`. Move the mouse inside the lava s
 
 ## Local music and pixel themes
 
-On macOS, point `scmp` at a directory with downloaded tracks. It scans subfolders and plays files from the playlist through AVFoundation. The visualizer reads the player's own stereo PCM, so folder playback starts without the System Audio Recording permission.
+Point `scmp` at a directory with downloaded tracks. It scans subfolders and plays files from the playlist through AVFoundation on macOS and through FFmpeg on Linux. The visualizer reads the player's own stereo PCM, so folder playback starts without the System Audio Recording permission. The playlist reads each track's title, artist and length in the background, and the filter also matches titles and artists.
 
 ```sh
 scmp --view player --music "$HOME/Music/My Albums"
@@ -109,13 +130,13 @@ scmp --view player --music "$HOME/Music/My Albums"
 
 Player shows the selected track’s cover and album details above the playlist when there is room. The bordered visualizer sits to the right in wide terminals and below the playlist in narrower ones. Press `v` to change the effect in either view. Press `1` for the full-screen Visualizer, `2` for the Player, or Tab to switch. Switching views preserves the current track and its position. The Visualizer uses the current local track when one is loaded. Before a local track is loaded, it uses the configured live source, which defaults to Mac system audio on macOS. Press `r` in the Visualizer to reconnect a live source.
 
-With `--music DIR`, the app starts in the Player when that folder has tracks and in the Visualizer when it is empty. Use `--view visualizer` or `--view player` to choose the opening view. Use `n`/`N` for next/previous and `v` for the next visualizer effect. Press `o` in either view to open a folder in the Player.
+With `--music DIR`, the app starts in the Player when that folder has tracks and in the Visualizer when it is empty. Use `--view visualizer` or `--view player` to choose the opening view. Use `n`/`N` for next/previous, `←`/`→` to seek, `+`/`-` for volume, `z` for shuffle, `R` to cycle repeat, and `v` for the next visualizer effect. On macOS, the keyboard media keys, headphone controls and the Now Playing widget in Control Center also control playback. Press `o` in either view to open a folder in the Player.
 
-SCMP remembers the last view, effect, wallpaper choice, folder, filter, selection, and playback position and status when you exit. The session is stored beside the config as `config.session`. Command-line options override the corresponding restored choices.
+SCMP remembers the last view, effect, wallpaper choice, folder, filter, selection, playback position and status, volume, shuffle, and repeat when you exit. The session is stored beside the config as `config.session`. Command-line options override the corresponding restored choices.
 
-Kitty displays album covers as inline images. Terminals without inline image support use the character-cell preview. The playlist reads the selected track's embedded cover, including MP3, M4A, and FLAC artwork. It also looks for `cover`, `folder`, `front`, and `album` JPEG or PNG files beside the track. A pixel record appears when no cover is found.
+Album covers appear as inline images in kitty and Ghostty (kitty graphics), iTerm2 and WezTerm (iTerm2 inline images), and foot, mlterm, Konsole and other sixel terminals. Set `SCMP_IMAGE_PROTOCOL` to `kitty`, `iterm`, `sixel` or `none` to override the detection. Inside tmux and screen, and in other terminals, SCMP uses the character-cell preview. The playlist reads the selected track's embedded cover, including MP3, M4A, and FLAC artwork. It also looks for `cover`, `folder`, `front`, and `album` JPEG or PNG files beside the track. A pixel record appears when no cover is found.
 
-On macOS, the wallpaper picker (`T`) includes the 12 animated ASCII scenes from [Claude Desktop Themes](https://github.com/0toshigami/claude-desktop-themes), including Moonlit, Koi Pond, and Sakura Dusk. A border marks the effect area and shows the current mode and signal status. The audio source appears under the Visualizer tab. Press `t` to cycle scenes and use `theme.motion=false` to pause wallpaper animation. The original pixel scenes and local image backgrounds are also available. Use a 256-color terminal for the full palette.
+On macOS, the wallpaper picker (`T`) includes the 12 animated ASCII scenes from [Claude Desktop Themes](https://github.com/0toshigami/claude-desktop-themes), including Moonlit, Koi Pond, and Sakura Dusk. The wallpaper fills the window and dims slightly behind the playlist so titles stay readable. A border marks the effect area and shows the current mode and signal status. The audio source appears under the Visualizer tab. Press `t` to cycle scenes and use `theme.motion=false` to pause wallpaper animation. The original pixel scenes and local image backgrounds are also available. Use a 256-color terminal for the full palette.
 
 ```sh
 scmp --view visualizer --theme koi-pond --mode spectrum

@@ -5,6 +5,7 @@
 #endif
 #include "Domain/ScmpConstants.h"
 #include "Domain/ScmpException.h"
+#include "Player/MediaControls.h"
 #include "Player/Spotify.h"
 #include "Plugin/Plugins.h"
 #include "Transformer/SpectrumTransformer.h"
@@ -181,6 +182,7 @@ bool scmp::Visualizer::run(const std::string &config_path, std::string &mode, Vi
     const auto selected = std::find(m_names.begin(), m_names.end(), mode);
     size_t current = selected == m_names.end() ? 0 : static_cast<size_t>(selected - m_names.begin());
     MouseTracking mouse;
+    MediaControls media;
 
     std::unique_ptr<AudioSource> system_audio;
     std::future<AudioStart> pending_capture;
@@ -240,7 +242,7 @@ bool scmp::Visualizer::run(const std::string &config_path, std::string &mode, Vi
 #ifdef _OS_OSX
                 import_spotify(m_music, interrupted);
 #else
-                m_music.set_error("Use scmp spotify to download playlists. Local playback is available on macOS.");
+                m_music.set_error("Download with scmp spotify import URL --download, then press o to open the folder.");
 #endif
             }
             if (key == 'o')
@@ -287,6 +289,27 @@ bool scmp::Visualizer::run(const std::string &config_path, std::string &mode, Vi
             writer.set_surface(nullptr);
         }
 
+        for (const auto &command : media.poll())
+        {
+            if (!m_music.loaded()) break;
+            auto *local = m_music.player();
+            switch (command.kind)
+            {
+            case MediaCommand::Toggle: m_music.toggle_pause(); break;
+            case MediaCommand::Play:
+                if (!local->playing()) m_music.toggle_pause();
+                break;
+            case MediaCommand::Pause:
+                if (local->playing()) m_music.toggle_pause();
+                break;
+            case MediaCommand::Next: m_music.play_neighbor(1); break;
+            case MediaCommand::Previous: m_music.play_neighbor(-1); break;
+            case MediaCommand::SeekTo: m_music.seek(command.position - local->elapsed()); break;
+            case MediaCommand::SkipForward: m_music.seek(10); break;
+            case MediaCommand::SkipBackward: m_music.seek(-10); break;
+            }
+        }
+
         if (m_music.loaded())
         {
             m_music.advance();
@@ -296,6 +319,20 @@ bool scmp::Visualizer::run(const std::string &config_path, std::string &mode, Vi
             case ' ': m_music.toggle_pause(); break;
             case 'n': m_music.play_neighbor(1); break;
             case 'N': m_music.play_neighbor(-1); break;
+            case '+':
+            case '=': m_music.change_volume(0.05); break;
+            case '-':
+            case '_': m_music.change_volume(-0.05); break;
+            case 'z': m_music.toggle_shuffle(); break;
+            case 'R': m_music.cycle_repeat(); break;
+            case KEY_LEFT:
+            case ',':
+                if (in_player || !lava) m_music.seek(-5);
+                break;
+            case KEY_RIGHT:
+            case '.':
+                if (in_player || !lava) m_music.seek(5);
+                break;
             case 'C':
                 view = ViewMode::Player;
                 m_music.select_playing();
@@ -352,6 +389,18 @@ bool scmp::Visualizer::run(const std::string &config_path, std::string &mode, Vi
 
         auto *player = m_music.player();
         const bool has_local_track = player && player->duration() > 0;
+        if (has_local_track && !player->finished())
+        {
+            const auto &details = m_music.playing_details();
+            const NowPlaying now_playing{m_music.tracks()[m_music.active()].path, details.title, details.artist,
+                                         details.album, &details.cover, player->duration(), player->elapsed(),
+                                         player->playing()};
+            media.update(&now_playing);
+        }
+        else
+        {
+            media.update(nullptr);
+        }
         if (has_local_track != using_local_audio)
         {
             using_local_audio = has_local_track;

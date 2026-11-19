@@ -3,6 +3,8 @@
 #include "Utils/NcursesUtils.h"
 #include "Transformer/SpectrumCircleTransformer.h"
 
+#include <cmath>
+
 namespace
 {
 }

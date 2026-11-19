@@ -5,6 +5,7 @@
 #include "Writer/NcursesWriter.h"
 #include "Writer/AlbumArt.h"
 #include "Writer/Wallpaper.h"
+#include <array>
 #include <csignal>
 #include <memory>
 
@@ -51,6 +52,8 @@ class StudioView
     size_t m_queue_start = 0;
     bool m_stage_visible = false;
     bool m_full_stage = false;
+    // Wallpaper area dimmed behind the playlist: x, y, width, height.
+    std::array<int, 4> m_dim{};
 };
 }
 

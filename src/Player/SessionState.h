@@ -11,6 +11,9 @@ struct SessionState
     double elapsed = 0;
     bool playing = false;
     std::string library_setting, theme_setting;
+    double volume = 1.0;
+    bool shuffle = false;
+    int repeat = 0;
 };
 
 SessionState read_session(const std::string &path);

@@ -8,6 +8,13 @@
 
 namespace scmp
 {
+struct TrackTags
+{
+    std::string title;
+    std::string artist;
+    double duration = 0;
+};
+
 struct TrackDetails
 {
     std::string title;
@@ -26,12 +33,15 @@ class LocalPlayer : public AudioSource
     virtual bool finished() const = 0;
     virtual double elapsed() const = 0;
     virtual double duration() const = 0;
+    // Linear gain from 0 to 1. The value carries over to the next track.
+    virtual void set_volume(double volume) = 0;
+    virtual double volume() const = 0;
 };
 
-#ifdef _OS_OSX
 std::unique_ptr<LocalPlayer> make_local_player();
 TrackDetails load_track_details(const MusicTrack &track);
-#endif
+// Title, artist and duration only, without decoding cover art.
+TrackTags load_track_tags(const MusicTrack &track);
 }
 
 #endif

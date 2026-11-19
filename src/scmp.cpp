@@ -30,7 +30,7 @@ const char *help =
     "       scmp spotify download DIR\n"
     "\n"
     "  -c FILE          Config file path (default: ~/.scmp/config)\n"
-    "  --music DIR      Browse and play a folder of local tracks (macOS)\n"
+    "  --music DIR      Browse and play a folder of local tracks\n"
     "  --view NAME      Open visualizer or player\n"
     "  --mode NAME      Choose spectrum, spectrum_circle, ellipse, lorenz, or lava\n"
     "  --theme NAME     Choose a wallpaper for this session\n"
@@ -39,7 +39,8 @@ const char *help =
     "  --set KEY=VALUE  Save a setting and exit (repeatable)\n"
     "  -h, --help       Show this help\n"
     "\n"
-    "While running: 1 Visualizer, 2 Player, i Spotify (macOS), o folder, v effect, T themes, q quit.\n";
+    "While running: 1 Visualizer, 2 Player, i Spotify (macOS), o folder, v effect, T themes, q quit.\n"
+    "Player: Space pause, ←/→ seek, +/- volume, n/N next/prev, z shuffle, R repeat.\n";
 }
 
 int main(int argc, char *argv[])

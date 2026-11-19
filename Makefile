@@ -30,11 +30,13 @@ BUILD_PERF_TEST_DIR = $(DIR)/build_perf_tests
 
 # Override optimizations via: make OPT_LEVEL=n
 OPT_LEVEL = 3
+# Release builds pass MARCH= so the binary runs on any CPU of the target architecture.
+MARCH ?= -march=native
 
 # Make-local Compiler Flags
 CXX_FLAGS = -std=c++14
 CXX_FLAGS += -O$(OPT_LEVEL)
-CXX_FLAGS += -march=native
+CXX_FLAGS += $(MARCH)
 CXX_FLAGS += -ffast-math
 CXX_FLAGS += -fno-omit-frame-pointer
 CXX_FLAGS += -D__extern_always_inline=inline
@@ -57,7 +59,7 @@ endif
 #perf tests should not have many warnings or error out on warning
 PERF_TEST_CXX_FLAGS = -std=c++14
 PERF_TEST_CXX_FLAGS += -O$(OPT_LEVEL)
-PERF_TEST_CXX_FLAGS += -march=native
+PERF_TEST_CXX_FLAGS += $(MARCH)
 PERF_TEST_CXX_FLAGS += -ffast-math
 PERF_TEST_CXX_FLAGS += -fno-omit-frame-pointer
 PERF_TEST_CXX_FLAGS += -ggdb -g2
@@ -112,13 +114,13 @@ NCURSES_PREFIX ?= $(BREW_PREFIX)/opt/ncurses
 INCLUDE_PATH := -I$(FFTW_PREFIX)/include -I$(NCURSES_PREFIX)/include $(INCLUDE_PATH)
 LIB_PATH := -L$(FFTW_PREFIX)/lib -L$(NCURSES_PREFIX)/lib $(LIB_PATH)
 CXX_FLAGS += -DNCURSESW
-LIBS += -lncursesw -framework CoreAudio -framework Foundation -framework AVFoundation -framework CoreGraphics -framework ImageIO -framework JavaScriptCore
+LIBS += -lncursesw -framework CoreAudio -framework Foundation -framework AVFoundation -framework CoreGraphics -framework ImageIO -framework JavaScriptCore -framework MediaPlayer -framework AppKit
 PLUGIN_SUFFIX = dylib
 PLUGIN_FLAGS = -dynamiclib
 SCMP_LINK_FLAGS = -Wl,-sectcreate,__TEXT,__info_plist,$(DIR)/src/Info.plist
 SCMP_LINK_INPUT = src/Info.plist
 else
-LIBS += -ldl
+LIBS += -ldl -lpthread
 PLUGIN_SUFFIX = so
 PLUGIN_FLAGS = -shared -fPIC
 #if this box has an older version of ncurses
@@ -161,7 +163,7 @@ PERF_TEST_SOURCES= $(wildcard perf_tests/*.cpp) $(wildcard perf_tests/*/*.cpp) $
 
 PERF_TEST_OBJECTS= $(addprefix $(BUILD_PERF_TEST_DIR)/,$(notdir $(PERF_TEST_SOURCES:.cpp=.o))) $(filter-out $(BUILD_DIR)/$(TARGET).o,$(OBJECTS))
 
-VPATH= $(dir $(wildcard src/*/ src/*/*/)) $(dir $(wildcard tests/*/ tests/*/*/)) $(dir $(wildcard perf_tests/*/ perf_tests/*/*/))
+VPATH= src tests perf_tests $(dir $(wildcard src/*/ src/*/*/)) $(dir $(wildcard tests/*/ tests/*/*/)) $(dir $(wildcard perf_tests/*/ perf_tests/*/*/))
 
 ###############################################################################
 ##  MAIN TARGETS                                                             ##

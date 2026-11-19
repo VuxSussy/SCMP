@@ -30,3 +30,30 @@ TEST(SessionStateTest, RestoresPathsAndPlaybackAndRejectsTruncatedState)
     EXPECT_TRUE(scmp::read_session(path).view.empty());
     unlink(path);
 }
+
+TEST(SessionStateTest, KeepsVolumeShuffleRepeatAndReadsVersionOne)
+{
+    char path[] = "/tmp/scmp-session-test.XXXXXX";
+    const int fd = mkstemp(path);
+    ASSERT_GE(fd, 0);
+    close(fd);
+    scmp::SessionState state;
+    state.view = "player";
+    state.volume = 0.35;
+    state.shuffle = true;
+    state.repeat = 2;
+    EXPECT_TRUE(scmp::save_session(path, state));
+    auto restored = scmp::read_session(path);
+    EXPECT_DOUBLE_EQ(restored.volume, 0.35);
+    EXPECT_TRUE(restored.shuffle);
+    EXPECT_EQ(restored.repeat, 2);
+
+    // Files written before volume and modes existed still load with defaults.
+    std::ofstream(path) << "1\n\"player\"\n\"lava\"\n\"auto\"\n\"\"\n\"\"\n\"\"\n\"\"\n0 0\n\"\"\n\"\"\n";
+    restored = scmp::read_session(path);
+    EXPECT_EQ(restored.view, "player");
+    EXPECT_DOUBLE_EQ(restored.volume, 1.0);
+    EXPECT_FALSE(restored.shuffle);
+    EXPECT_EQ(restored.repeat, 0);
+    unlink(path);
+}

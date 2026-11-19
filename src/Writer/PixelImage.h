@@ -15,9 +15,7 @@ struct PixelImage
     bool empty() const { return pixels.empty(); }
 };
 
-#ifdef _OS_OSX
 PixelImage load_pixel_image(const std::string &path);
-#endif
 }
 
 #endif
