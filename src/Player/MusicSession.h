@@ -48,7 +48,9 @@ class MusicSession
     void toggle_pause();
     void seek(double seconds);
     void change_volume(double delta);
-    double volume() const { return m_volume; }
+    // The macOS output device volume when it has one, so the menu bar and volume keys stay in step.
+    // Otherwise the player's own gain.
+    double volume() const;
     void toggle_shuffle();
     bool shuffle() const { return m_shuffle; }
     void cycle_repeat();
@@ -97,7 +99,9 @@ class MusicSession
     size_t m_selected = 0;
     size_t m_active = static_cast<size_t>(-1);
     size_t m_playing_track = static_cast<size_t>(-1);
+    // Player gain, used when the output device has no adjustable volume.
     double m_volume = 1.0;
+    double player_gain() const;
     bool m_shuffle = false;
     RepeatMode m_repeat = RepeatMode::Off;
 };

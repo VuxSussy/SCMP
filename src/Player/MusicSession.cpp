@@ -1,4 +1,5 @@
 #include "Player/MusicSession.h"
+#include "Player/SystemVolume.h"
 #include "Domain/ScmpException.h"
 #include "Utils/Utils.h"
 
@@ -105,7 +106,7 @@ void scmp::MusicSession::open_folders(const std::vector<std::string> &paths)
     if (active == tracks.end())
     {
         m_player = make_local_player();
-        m_player->set_volume(m_volume);
+        m_player->set_volume(player_gain());
         m_active = m_playing_track = static_cast<size_t>(-1);
         m_selected = 0;
         m_now_playing.clear();
@@ -408,8 +409,27 @@ void scmp::MusicSession::seek(double seconds)
 
 void scmp::MusicSession::change_volume(double delta)
 {
-    m_volume = std::max(0.0, std::min(1.0, std::round((m_volume + delta) * 20) / 20));
+    const auto step = [&](double from) { return std::max(0.0, std::min(1.0, std::round((from + delta) * 20) / 20)); };
+    const auto system = system_volume();
+    if (system >= 0 && set_system_volume(step(system)))
+    {
+        if (m_player) m_player->set_volume(1.0);
+        return;
+    }
+    m_volume = step(m_volume);
     if (m_player) m_player->set_volume(m_volume);
+}
+
+double scmp::MusicSession::volume() const
+{
+    const auto system = system_volume();
+    return system >= 0 ? system : m_volume;
+}
+
+double scmp::MusicSession::player_gain() const
+{
+    // The device volume already scales the output, so the player plays at full gain.
+    return system_volume() >= 0 ? 1.0 : m_volume;
 }
 
 void scmp::MusicSession::toggle_shuffle()
@@ -433,7 +453,8 @@ void scmp::MusicSession::restore(const SessionState &state)
     };
     m_volume = std::max(0.0, std::min(1.0, state.volume));
     m_playlist = m_scope = std::min(state.playlist, m_playlists.empty() ? 0 : m_playlists.size() - 1);
-    if (m_player) m_player->set_volume(m_volume);
+    // A saved level only applies to the player's gain; the system volume is left as the user set it.
+    if (m_player) m_player->set_volume(player_gain());
     m_repeat = state.repeat == 1 ? RepeatMode::All : state.repeat == 2 ? RepeatMode::One : RepeatMode::Off;
     m_selected = find(state.selection);
     filter(state.filter);
@@ -452,7 +473,7 @@ void scmp::MusicSession::remember(SessionState &state) const
     state.track = active ? m_tracks[m_active].path : "";
     state.elapsed = active ? m_player->elapsed() : 0;
     state.playing = active && m_player->playing();
-    state.volume = m_volume;
+    state.volume = volume();
     state.shuffle = m_shuffle;
     state.repeat = static_cast<int>(m_repeat);
 }
