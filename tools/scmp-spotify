@@ -1,0 +1,142 @@
+#!/usr/bin/env python3
+import argparse
+import fcntl
+import json
+import os
+from pathlib import Path
+import re
+import shlex
+import shutil
+import subprocess
+import sys
+from tempfile import TemporaryDirectory
+
+
+MANIFEST = "playlist.spotdl"
+PLAYLIST = re.compile(
+    r"(?:https://open\.spotify\.com/(?:intl-[\w-]+/)?(?:embed/)?playlist/"
+    r"|spotify:playlist:)([a-zA-Z0-9]{22})/?(?:[?#].*)?"
+)
+
+
+def spotdl(directory, *args):
+    for tool in ("uvx", "ffmpeg"):
+        if not shutil.which(tool):
+            raise ValueError(f"{tool} is required. On macOS run: brew install uv ffmpeg deno")
+    subprocess.run(
+        ["uvx", "--from", "spotdl==4.6.0", "spotdl", *args, "--lyrics", "--simple-tui"],
+        cwd=directory, check=True,
+    )
+
+
+def read_tracks(manifest):
+    tracks = json.loads(manifest.read_text(encoding="utf-8"))
+    if not isinstance(tracks, list) or not tracks or not all(isinstance(track, dict) for track in tracks):
+        raise ValueError(f"{manifest.name} contains no usable tracks.")
+    return tracks
+
+
+def import_playlist(url, directory):
+    manifest = directory / MANIFEST
+    if manifest.exists():
+        raise ValueError(f"{manifest} already exists. Use download or choose another folder.")
+    directory.mkdir(parents=True, exist_ok=True)
+    with TemporaryDirectory(prefix=".scmp-spotify-", dir=directory) as folder:
+        staged = Path(folder) / MANIFEST
+        spotdl(folder, "save", url, "--save-file", MANIFEST)
+        tracks = read_tracks(staged)
+        if any(track.get("list_length") != len(tracks) for track in tracks):
+            raise ValueError("Spotify returned an incomplete playlist. Try importing again.")
+        if any(not isinstance(track.get("list_position"), int) for track in tracks):
+            raise ValueError("Spotify did not return the track order.")
+        tracks.sort(key=lambda track: track["list_position"])
+        for position, track in enumerate(tracks, 1):
+            track["list_position"] = position
+        staged.write_text(json.dumps(tracks, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        os.link(staged, manifest)
+    print(f"Imported {len(tracks)} tracks to {manifest}")
+
+
+def download_playlist(directory):
+    manifest = directory / MANIFEST
+    if not manifest.is_file():
+        raise ValueError(f"No imported playlist in {directory}. Run import first.")
+    tracks = read_tracks(manifest)
+    lock = Path.home() / ".scmp" / "spotify-download.lock"
+    lock.parent.mkdir(parents=True, exist_ok=True)
+    with lock.open("a") as handle:
+        try:
+            # spotDL shares its temporary audio files across downloads by video ID.
+            fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            raise ValueError("Another scmp-spotify download is running.") from None
+
+        with TemporaryDirectory(prefix=".scmp-spotify-", dir=directory) as folder:
+            staging = Path(folder)
+            shutil.copyfile(manifest, staging / MANIFEST)
+            for audio in directory.glob("*.mp3"):
+                if audio.is_file() and audio.stat().st_size:
+                    (staging / audio.name).symlink_to(audio)
+            spotdl(
+                folder, "download", MANIFEST, "--format", "mp3", "--overwrite", "skip",
+                "--audio", "youtube", "youtube-music", "soundcloud", "--threads", "1",
+                "--yt-dlp-args=--socket-timeout 15 --retries 2 --extractor-retries 2",
+                "--output", "{list-position} - {artist} - {title}.{output-ext}",
+                "--m3u", "finished.m3u8", "--print-errors",
+            )
+            completed = (staging / "finished.m3u8").read_text(encoding="utf-8").splitlines()
+            ready = 0
+            for name in dict.fromkeys(completed):
+                audio = staging / name
+                if name.startswith("#") or Path(name).name != name or audio.suffix != ".mp3":
+                    continue
+                if audio.is_file() and audio.stat().st_size:
+                    if not audio.is_symlink():
+                        os.link(audio, directory / name)
+                    ready += 1
+
+    print(f"{ready}/{len(tracks)} tracks ready in {directory}")
+    if ready:
+        helper = Path(__file__).resolve()
+        player = helper.with_name("scmp")
+        if not player.is_file():
+            player = helper.parents[1] / "build" / "scmp"
+        print(f"Open with: {shlex.join([str(player), '--view', 'player', '--music', str(directory)])}")
+    return 0 if ready == len(tracks) else 3 if ready else 1
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Import a public Spotify playlist and fetch MP3s for scmp.")
+    commands = parser.add_subparsers(dest="command", required=True)
+    fetch = commands.add_parser("import", help="save the track list from a public playlist")
+    fetch.add_argument("url", help="open.spotify.com playlist URL or Spotify playlist URI")
+    fetch.add_argument("-o", "--output", type=Path, metavar="DIR", help="defaults to ~/Music/Spotify/<playlist-id>")
+    fetch.add_argument("--download", action="store_true", help="download MP3s immediately after import")
+    download = commands.add_parser("download", help="download or retry the tracks in an imported folder")
+    download.add_argument("directory", type=Path, metavar="DIR")
+    args = parser.parse_args()
+
+    if args.command == "download":
+        return download_playlist(args.directory.expanduser().resolve())
+    match = PLAYLIST.fullmatch(args.url.strip())
+    if not match:
+        fetch.error("provide a Spotify playlist URL or spotify:playlist URI")
+    playlist_id = match[1]
+    url = f"https://open.spotify.com/playlist/{playlist_id}"
+    directory = (args.output or Path.home() / "Music" / "Spotify" / playlist_id).expanduser().resolve()
+    manifest = directory / MANIFEST
+    if args.download and manifest.exists():
+        if any(track.get("list_url") != url for track in read_tracks(manifest)):
+            raise ValueError(f"{directory} already contains another playlist. Choose another folder.")
+    else:
+        import_playlist(url, directory)
+    return download_playlist(directory) if args.download else 0
+
+
+if __name__ == "__main__":
+    try:
+        sys.exit(main())
+    except (ValueError, OSError, subprocess.CalledProcessError) as error:
+        sys.exit(f"scmp-spotify: {error}")
+    except KeyboardInterrupt:
+        sys.exit(130)
