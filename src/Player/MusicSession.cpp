@@ -3,11 +3,14 @@
 #include "Utils/Utils.h"
 
 #include <algorithm>
+#include <cstdlib>
 
 void scmp::MusicSession::open(const std::string &path)
 {
 #ifdef _OS_OSX
     auto directory = expand_path(path);
+    std::unique_ptr<char, decltype(&std::free)> resolved(realpath(directory.c_str(), nullptr), &std::free);
+    if (resolved) directory = resolved.get();
     auto tracks = scan_music_directory(directory);
     const bool preserve = m_active < m_tracks.size();
     const auto active = preserve ? std::find_if(tracks.begin(), tracks.end(), [&](const MusicTrack &track) {
@@ -108,7 +111,7 @@ void scmp::MusicSession::select_playing()
     }
 }
 
-void scmp::MusicSession::play(size_t track, bool follow_selection)
+void scmp::MusicSession::play(size_t track, bool follow_selection, double position, bool start)
 {
     if (track >= m_tracks.size())
     {
@@ -116,7 +119,7 @@ void scmp::MusicSession::play(size_t track, bool follow_selection)
     }
     try
     {
-        m_player->play(m_tracks[track].path);
+        m_player->play(m_tracks[track].path, position, start);
         m_active = track;
         if (follow_selection && m_selected != track &&
             std::binary_search(m_visible.begin(), m_visible.end(), track))
@@ -177,4 +180,27 @@ void scmp::MusicSession::toggle_pause()
     {
         play_selected();
     }
+}
+
+void scmp::MusicSession::restore(const SessionState &state)
+{
+    const auto find = [&](const std::string &path) {
+        return static_cast<size_t>(std::find_if(m_tracks.begin(), m_tracks.end(), [&](const MusicTrack &track) {
+            return track.path == path;
+        }) - m_tracks.begin());
+    };
+    m_selected = find(state.selection);
+    filter(state.filter);
+    play(find(state.track), false, state.elapsed, state.playing);
+}
+
+void scmp::MusicSession::remember(SessionState &state) const
+{
+    state.folder = m_directory;
+    state.selection = m_selected < m_tracks.size() ? m_tracks[m_selected].path : "";
+    state.filter = m_query;
+    const bool active = m_active < m_tracks.size() && !m_player->finished();
+    state.track = active ? m_tracks[m_active].path : "";
+    state.elapsed = active ? m_player->elapsed() : 0;
+    state.playing = active && m_player->playing();
 }

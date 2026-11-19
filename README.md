@@ -83,7 +83,9 @@ Player shows a bordered visualizer beside the playlist in wide terminals and bel
 
 With `--music DIR`, the app starts in the Player when that folder has tracks and in the Visualizer when it is empty. Use `--view visualizer` or `--view player` to choose the opening view. Use `n`/`N` for next/previous and `v` for the next visualizer effect. Press `o` in either view to open a folder in the Player.
 
-The playlist previews the selected track's embedded cover, including MP3, M4A, and FLAC artwork. It also looks for `cover`, `folder`, `front`, and `album` JPEG or PNG files beside the track. A pixel record appears when no cover is found.
+SCMP remembers the last view, effect, wallpaper choice, folder, filter, selection, and playback position and status when you exit. The session is stored beside the config as `config.session`. Command-line options override the corresponding restored choices.
+
+Kitty displays album covers as inline images. Terminals without inline image support use the character-cell preview. The playlist reads the selected track's embedded cover, including MP3, M4A, and FLAC artwork. It also looks for `cover`, `folder`, `front`, and `album` JPEG or PNG files beside the track. A pixel record appears when no cover is found.
 
 On macOS, the wallpaper picker (`T`) includes the 12 animated ASCII scenes from [Claude Desktop Themes](https://github.com/0toshigami/claude-desktop-themes), including Moonlit, Koi Pond, and Sakura Dusk. A border marks the effect area and shows the current mode and signal status. The audio source appears under the Visualizer tab. Press `t` to cycle scenes and use `theme.motion=false` to pause wallpaper animation. The original pixel scenes and local image backgrounds are also available. Use a 256-color terminal for the full palette.
 

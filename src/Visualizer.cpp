@@ -158,11 +158,12 @@ void scmp::Visualizer::setup_transformers()
     }
 }
 
-std::string scmp::Visualizer::run(const std::string &config_path, const std::string &initial_mode, ViewMode &view,
-                                 const volatile std::sig_atomic_t &interrupted)
+bool scmp::Visualizer::run(const std::string &config_path, std::string &mode, ViewMode &view,
+                           std::string &theme, const volatile std::sig_atomic_t &interrupted)
 {
     NcursesWriter writer(&m_settings);
     StudioView studio(m_settings.workspace, writer);
+    studio.restore_theme(theme);
     Plugins plugins;
     plugins.load(m_settings.workspace.plugin_directory, m_settings.workspace.enabled_plugins);
     set_sample_rate(m_configured_rate);
@@ -177,7 +178,7 @@ std::string scmp::Visualizer::run(const std::string &config_path, const std::str
     std::vector<pcm_stereo_sample> pcm(m_settings.get_sample_size());
     std::vector<ScmpPluginSample> plugin_samples;
 
-    const auto selected = std::find(m_names.begin(), m_names.end(), initial_mode);
+    const auto selected = std::find(m_names.begin(), m_names.end(), mode);
     size_t current = selected == m_names.end() ? 0 : static_cast<size_t>(selected - m_names.begin());
     MouseTracking mouse;
 
@@ -217,18 +218,22 @@ std::string scmp::Visualizer::run(const std::string &config_path, const std::str
             writer.set_surface(nullptr);
         }
 
+        if (key == KEY_RESIZE) studio.clear_cover();
         if (key == 's' || key == 'p' || key == 'o' || key == 'i' || key == 'T' || (key == '/' && m_music.loaded()))
         {
             mouse.set(false);
+            studio.clear_cover();
             writer.set_surface(nullptr);
             if (lava) lava->reset_pointer();
 
             if (key == 's' && edit_settings(config_path, interrupted))
             {
-                return m_names[current];
+                mode = m_names[current];
+                theme.clear();
+                return true;
             }
             if (key == 'p') plugins.menu(config_path, interrupted);
-            if (key == 'T') studio.choose_theme(interrupted);
+            if (key == 'T' && studio.choose_theme(interrupted)) theme = studio.theme_choice();
             if (key == 'i')
             {
                 view = ViewMode::Player;
@@ -268,7 +273,11 @@ std::string scmp::Visualizer::run(const std::string &config_path, const std::str
             continue;
         }
 
-        if (key == 't') studio.cycle_theme();
+        if (key == 't')
+        {
+            studio.cycle_theme();
+            theme = studio.theme_choice();
+        }
         if (key == 'v' || (key == ' ' && view == ViewMode::Visualizer && !m_music.loaded()) ||
             (view == ViewMode::Visualizer && rotation.count() > 0 && Clock::now() - last_rotation >= rotation))
         {
@@ -490,5 +499,6 @@ std::string scmp::Visualizer::run(const std::string &config_path, const std::str
         }
         studio.finish_frame();
     }
-    return {};
+    mode = m_names[current];
+    return false;
 }

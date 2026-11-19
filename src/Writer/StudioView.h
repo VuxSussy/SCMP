@@ -3,6 +3,7 @@
 
 #include "Player/MusicSession.h"
 #include "Writer/NcursesWriter.h"
+#include "Writer/AlbumArt.h"
 #include "Writer/Wallpaper.h"
 #include <csignal>
 #include <memory>
@@ -14,12 +15,15 @@ class StudioView
   public:
     StudioView(const WorkspaceSettings &settings, NcursesWriter &writer);
     void cycle_theme();
-    void choose_theme(const volatile std::sig_atomic_t &interrupted);
+    bool choose_theme(const volatile std::sig_atomic_t &interrupted);
     WINDOW *begin_frame(const MusicSession &music, ViewMode view, const std::string &effect,
                         const char *input, const std::string &status);
     WINDOW *visualizer_surface();
     void draw_visualizer_frame(const std::string &mode, const char *signal, bool audible);
     void finish_frame();
+    void clear_cover() { m_album_art.clear(); }
+    std::string theme_choice() const { return m_show_background ? "custom" : m_theme; }
+    void restore_theme(const std::string &theme);
 
   private:
     struct DeleteWindow
@@ -34,6 +38,7 @@ class StudioView
                     int style = A_NORMAL);
 
     NcursesWriter &m_writer;
+    AlbumArt m_album_art;
     std::string m_theme;
     std::string m_background_error;
     PixelImage m_background;

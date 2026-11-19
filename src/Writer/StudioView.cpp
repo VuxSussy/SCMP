@@ -218,7 +218,7 @@ void scmp::StudioView::cycle_theme()
     m_background_error.clear();
 }
 
-void scmp::StudioView::choose_theme(const volatile std::sig_atomic_t &interrupted)
+bool scmp::StudioView::choose_theme(const volatile std::sig_atomic_t &interrupted)
 {
     const auto &catalog = themes();
     const auto current = effective_scene(m_theme);
@@ -245,7 +245,7 @@ void scmp::StudioView::choose_theme(const volatile std::sig_atomic_t &interrupte
         draw_text(stdscr, LINES - 1, 2, COLS - 4, "j/k select   Enter apply   Esc back", A_DIM);
         refresh();
         const int key = getch();
-        if (key == 27 || key == 'q') return;
+        if (key == 27 || key == 'q') return false;
         if ((key == KEY_UP || key == 'k') && selected > 0) --selected;
         if ((key == KEY_DOWN || key == 'j') && selected + 1 < count) ++selected;
         if (key == KEY_ENTER || key == '\n' || key == '\r')
@@ -253,8 +253,22 @@ void scmp::StudioView::choose_theme(const volatile std::sig_atomic_t &interrupte
             m_show_background = selected == catalog.size();
             if (!m_show_background) m_theme = catalog[selected].id;
             m_background_error.clear();
-            return;
+            return true;
         }
+    }
+    return false;
+}
+
+void scmp::StudioView::restore_theme(const std::string &theme)
+{
+    if (theme == "custom")
+    {
+        m_show_background = !m_background.empty();
+    }
+    else if (std::any_of(themes().begin(), themes().end(), [&](const Theme &item) { return theme == item.id; }))
+    {
+        m_show_background = false;
+        m_theme = theme;
     }
 }
 
@@ -262,6 +276,7 @@ WINDOW *scmp::StudioView::begin_frame(const MusicSession &music, ViewMode view, 
                                      const char *input, const std::string &status)
 {
     erase();
+    m_album_art.begin_frame();
     m_stage_visible = false;
     const int rows = LINES;
     const int width = COLS;
@@ -305,7 +320,7 @@ WINDOW *scmp::StudioView::begin_frame(const MusicSession &music, ViewMode view, 
     {
         const int list_width = std::min(76, content_width * 2 / 5);
         const bool show_details = content_height >= 22 && !music.visible_tracks().empty();
-        const int details_height = show_details ? 11 : 0;
+        const int details_height = show_details ? std::min(23, content_height / 2) : 0;
         draw_playlist(music, stage_x, list_width, header, content_height, !show_details);
         for (int row = header; row < bottom; ++row)
         {
@@ -322,8 +337,20 @@ WINDOW *scmp::StudioView::begin_frame(const MusicSession &music, ViewMode view, 
     {
         const int graph_height = content_height >= 9 ? std::min(11, std::max(5, content_height / 3)) : 0;
         const int list_height = content_height - graph_height - (graph_height ? 1 : 0);
-        draw_playlist(music, stage_x, content_width, header, list_height, true);
-        canvas = {stage_x, bottom - graph_height, content_width, graph_height};
+        const bool side_cover = width >= 64 && graph_height >= 5 && !music.visible_tracks().empty();
+        const int cover_height = std::min(9, graph_height);
+        const int cover_width = side_cover ? cover_height * 2 : 0;
+        draw_playlist(music, stage_x, content_width, header, list_height, !side_cover);
+        canvas = {stage_x, bottom - graph_height,
+                  content_width - (side_cover ? cover_width + 2 : 0), graph_height};
+        if (side_cover)
+        {
+            const int x = width - stage_x - cover_width;
+            const int y = canvas.y + (graph_height - cover_height) / 2;
+            const auto &cover = music.details().cover;
+            if (!m_album_art.place(cover, music.tracks()[music.selected()].path, y, x, cover_width, cover_height))
+                draw_cover(stdscr, y, x, cover_width, cover_height, cover);
+        }
     }
 
     const auto *player = music.player();
@@ -459,7 +486,8 @@ void scmp::StudioView::draw_playlist(const MusicSession &music, int x, int width
         m_writer.write_over(stdscr, preview_y - 1, x, std::wstring(width, L'─'), A_DIM);
         const int image_width = preview_height * 2;
         const auto &details = music.details();
-        draw_cover(stdscr, preview_y, x, image_width, preview_height, details.cover);
+        if (!m_album_art.place(details.cover, tracks[music.selected()].path, preview_y, x, image_width, preview_height))
+            draw_cover(stdscr, preview_y, x, image_width, preview_height, details.cover);
         const int label_x = x + image_width + 2;
         const int label_width = width - image_width - 2;
         draw_label(stdscr, preview_y, label_x, label_width, details.title, A_BOLD);
@@ -475,8 +503,10 @@ void scmp::StudioView::draw_track_preview(const MusicSession &music, int x, int 
 {
     const auto &details = music.details();
     draw_label(stdscr, top, x, width, "Selected track", A_BOLD);
-    const int art_height = std::min({10, width / 2, height - 6});
-    draw_cover(stdscr, top + 2, x + (width - art_height * 2) / 2, art_height * 2, art_height, details.cover);
+    const int art_height = std::min({16, width / 2, height - 6});
+    const int art_x = x + (width - art_height * 2) / 2;
+    if (!m_album_art.place(details.cover, music.tracks()[music.selected()].path, top + 2, art_x, art_height * 2, art_height))
+        draw_cover(stdscr, top + 2, art_x, art_height * 2, art_height, details.cover);
     const int label = top + art_height + 3;
     draw_label(stdscr, label, x, width, details.title, A_BOLD);
     draw_label(stdscr, label + 1, x, width, details.artist, A_DIM);
@@ -618,4 +648,5 @@ void scmp::StudioView::finish_frame()
     }
     wnoutrefresh(stdscr);
     doupdate();
+    m_album_art.draw();
 }

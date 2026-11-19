@@ -20,7 +20,7 @@ class LocalPlayer : public AudioSource
 {
   public:
     static constexpr uint32_t sample_rate = 48000;
-    virtual void play(const std::string &path) = 0;
+    virtual void play(const std::string &path, double position = 0, bool start = true) = 0;
     virtual void toggle_pause() = 0;
     virtual bool playing() const = 0;
     virtual bool finished() const = 0;

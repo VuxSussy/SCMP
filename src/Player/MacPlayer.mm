@@ -32,7 +32,7 @@ scmp::PixelImage decode_image(CGImageSourceRef source)
     NSDictionary *options = @{
         (__bridge NSString *)kCGImageSourceCreateThumbnailFromImageAlways: @YES,
         (__bridge NSString *)kCGImageSourceCreateThumbnailWithTransform: @YES,
-        (__bridge NSString *)kCGImageSourceThumbnailMaxPixelSize: @192,
+        (__bridge NSString *)kCGImageSourceThumbnailMaxPixelSize: @384,
     };
     CGImageRef image = CGImageSourceCreateThumbnailAtIndex(source, 0, (__bridge CFDictionaryRef)options);
     CFRelease(source);
@@ -185,6 +185,7 @@ struct Playback
     std::shared_ptr<SampleBuffer> samples = std::make_shared<SampleBuffer>();
     double length = 0;
     double paused_at = 0;
+    double offset = 0;
     bool tap = false;
 
     ~Playback()
@@ -204,7 +205,7 @@ struct Playback
 class MacPlayer final : public scmp::LocalPlayer
 {
   public:
-    void play(const std::string &path) override
+    void play(const std::string &path, double position, bool start) override
     {
         @autoreleasepool
         {
@@ -230,16 +231,30 @@ class MacPlayer final : public scmp::LocalPlayer
                     samples->capture(buffer);
                 }];
             next->tap = true;
-            [next->player scheduleFile:next->file atTime:nil completionCallbackType:AVAudioPlayerNodeCompletionDataPlayedBack
-                completionHandler:^(AVAudioPlayerNodeCompletionCallbackType) {
-                    samples->ended.store(true, std::memory_order_release);
-                }];
+            const auto last_frame = next->file.length - 1;
+            const auto first_frame = static_cast<AVAudioFramePosition>(
+                std::min(static_cast<double>(last_frame), position * input.sampleRate));
+            next->offset = next->paused_at = first_frame / input.sampleRate;
+            const auto completion = ^(AVAudioPlayerNodeCompletionCallbackType) {
+                samples->ended.store(true, std::memory_order_release);
+            };
+            if (first_frame == 0)
+            {
+                [next->player scheduleFile:next->file atTime:nil
+                    completionCallbackType:AVAudioPlayerNodeCompletionDataPlayedBack completionHandler:completion];
+            }
+            else
+            {
+                [next->player scheduleSegment:next->file startingFrame:first_frame
+                    frameCount:static_cast<AVAudioFrameCount>(next->file.length - first_frame) atTime:nil
+                    completionCallbackType:AVAudioPlayerNodeCompletionDataPlayedBack completionHandler:completion];
+            }
             if (![next->engine startAndReturnError:&error])
             {
                 throw scmp::ScmpException("Could not start audio output (%s)", error.localizedDescription.UTF8String);
             }
             m_playback = std::move(next);
-            [m_playback->player play];
+            if (start) [m_playback->player play];
         }
     }
 
@@ -283,7 +298,9 @@ class MacPlayer final : public scmp::LocalPlayer
             }
             auto *last = m_playback->player.lastRenderTime;
             auto *time = last ? [m_playback->player playerTimeForNodeTime:last] : nil;
-            return time && time.sampleRate > 0 ? std::max(0.0, std::min(duration(), time.sampleTime / time.sampleRate)) : 0;
+            return time && time.sampleRate > 0
+                ? std::max(m_playback->offset, std::min(duration(), m_playback->offset + time.sampleTime / time.sampleRate))
+                : m_playback->paused_at;
         }
     }
 

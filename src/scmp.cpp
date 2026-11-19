@@ -1,6 +1,7 @@
 #include <clocale>
 #include <csignal>
 #include <iostream>
+#include <sys/stat.h>
 
 #include "Domain/ScmpException.h"
 #include "Player/Spotify.h"
@@ -175,6 +176,9 @@ int main(int argc, char *argv[])
         }
         else
         {
+            const auto state_path = config_path + ".session";
+            auto state = scmp::read_session(state_path);
+            std::string selected_theme, configured_theme;
             bool first_run = true;
             std::vector<std::string> previous_modes;
             std::string previous_folder;
@@ -183,6 +187,8 @@ int main(int argc, char *argv[])
             {
                 scmp::Settings settings;
                 ConfigurationUtils::load_settings(settings, config_path);
+                configured_theme = settings.workspace.theme;
+                if (first_run && theme.empty() && state.theme_setting == configured_theme) selected_theme = state.theme;
                 if (!theme.empty())
                 {
                     settings.workspace.theme = theme;
@@ -190,11 +196,27 @@ int main(int argc, char *argv[])
                 }
                 auto modes = settings.get_visualizers();
                 const auto &configured_folder = settings.workspace.music_directory;
+                if (first_run && mode.empty() && std::find(modes.begin(), modes.end(), state.mode) != modes.end())
+                    mode = state.mode;
+                bool restored_library = false;
+                if (first_run && music_path.empty() && !state.folder.empty() && state.library_setting == configured_folder)
+                {
+                    try
+                    {
+                        music.open(state.folder);
+                        music.restore(state);
+                        restored_library = true;
+                    }
+                    catch (const std::exception &error)
+                    {
+                        music.set_error(error.what());
+                    }
+                }
                 if (first_run && !music_path.empty())
                 {
                     music.open(music_path);
                 }
-                else if (configured_folder != previous_folder)
+                else if (!restored_library && configured_folder != previous_folder)
                 {
                     if (configured_folder == "none")
                     {
@@ -214,9 +236,11 @@ int main(int argc, char *argv[])
                     }
                 }
                 previous_folder = configured_folder;
-                if (first_run && !view_explicit && !music.tracks().empty())
+                if (first_run && !view_explicit)
                 {
-                    view = scmp::ViewMode::Player;
+                    if (music_path.empty() && state.view == "visualizer") view = scmp::ViewMode::Visualizer;
+                    else if ((music_path.empty() && state.view == "player") || !music.tracks().empty())
+                        view = scmp::ViewMode::Player;
                 }
                 const bool keep_mode = first_run || modes == previous_modes;
                 previous_modes = modes;
@@ -227,11 +251,20 @@ int main(int argc, char *argv[])
                 }
                 first_run = false;
                 scmp::Visualizer visualizer(settings, music);
-                mode = visualizer.run(config_path, mode, view, interrupted);
-                if (mode.empty())
-                {
-                    break;
-                }
+                if (!visualizer.run(config_path, mode, view, selected_theme, interrupted)) break;
+            }
+            if (!first_run)
+            {
+                if (config_path == ConfigurationUtils::default_config_path())
+                    ::mkdir((scmp::Utils::get_home_directory() + ".scmp").c_str(), 0700);
+                state.view = view == scmp::ViewMode::Player ? "player" : "visualizer";
+                state.mode = mode;
+                state.theme = selected_theme;
+                state.library_setting = previous_folder;
+                state.theme_setting = configured_theme;
+                music.remember(state);
+                if (!scmp::save_session(state_path, state))
+                    std::cerr << "scmp: Could not save session to " << state_path << '\n';
             }
         }
         scmp::Logger::uninitialize();

@@ -2,6 +2,7 @@
 #define SCMP_MUSIC_SESSION_H
 
 #include "Player/LocalPlayer.h"
+#include "Player/SessionState.h"
 
 namespace scmp
 {
@@ -10,6 +11,8 @@ class MusicSession
   public:
     void open(const std::string &path);
     void close();
+    void restore(const SessionState &state);
+    void remember(SessionState &state) const;
     bool loaded() const { return m_player != nullptr; }
     void select(int offset);
     void filter(const std::string &query);
@@ -33,7 +36,7 @@ class MusicSession
     void set_error(const std::string &error) { m_error = error; }
 
   private:
-    void play(size_t track, bool follow_selection);
+    void play(size_t track, bool follow_selection, double position = 0, bool start = true);
     void update_details();
 
     std::string m_directory;

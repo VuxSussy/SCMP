@@ -15,9 +15,9 @@ class Visualizer
   public:
     Visualizer(Settings &settings, MusicSession &music);
 
-    // Return the current mode when settings were saved and the session should reload.
-    std::string run(const std::string &config_path, const std::string &initial_mode, ViewMode &view,
-                    const volatile std::sig_atomic_t &interrupted);
+    // Reload settings when the editor saves.
+    bool run(const std::string &config_path, std::string &mode, ViewMode &view, std::string &theme,
+             const volatile std::sig_atomic_t &interrupted);
 
   private:
     void set_sample_rate(uint32_t rate);
