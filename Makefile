@@ -237,9 +237,9 @@ $(BUILD_DIR)/%.o: %.mm $(HEADERS) Makefile
 	mkdir -p $(BUILD_DIR)
 	$(CXX) $(CXX_FLAGS) $(INCLUDE_PATH) -fobjc-arc -c $< -o $@
 
-WALLPAPER_SCENES = $(wildcard vendor/claude-desktop-themes/scenes/*.js)
-WALLPAPER_SOURCES = vendor/claude-desktop-themes/scene-kit.js $(WALLPAPER_SCENES) src/Writer/WallpaperAdapter.js
-WALLPAPER_LICENSE = vendor/claude-desktop-themes/LICENSE
+WALLPAPER_SCENES = $(wildcard src/Writer/AsciiScenes/scenes/*.js)
+WALLPAPER_SOURCES = src/Writer/AsciiScenes/scene-kit.js $(WALLPAPER_SCENES) src/Writer/AsciiScenes/adapter.js
+WALLPAPER_LICENSE = src/Writer/AsciiScenes/LICENSE
 $(BUILD_DIR)/Wallpapers.inc: $(WALLPAPER_SOURCES) $(WALLPAPER_LICENSE) Makefile
 	mkdir -p $(BUILD_DIR)
 	{ printf '%s\n' 'static const char wallpaper_source[] = R"SCMP_WALLPAPER('; \

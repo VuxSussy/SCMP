@@ -154,7 +154,7 @@ SCMP remembers the last view, layout, effect, wallpaper choice, folder, filter, 
 
 Album covers appear as inline images in kitty and Ghostty (kitty graphics), iTerm2 and WezTerm (iTerm2 inline images), and foot, mlterm, Konsole and other sixel terminals. Set `SCMP_IMAGE_PROTOCOL` to `kitty`, `iterm`, `sixel` or `none` to override the detection. Inside tmux and screen, and in other terminals, SCMP uses the character-cell preview. The playlist reads the selected track's embedded cover, including MP3, M4A, and FLAC artwork. It also looks for `cover`, `folder`, `front`, and `album` JPEG or PNG files beside the track. A pixel record appears when no cover is found.
 
-The wallpaper picker (`T`) offers animated pixel scenes on every platform: Cat Window (a cat on the sill watching the moon rise), Torii Gate (a shrine gate in still water with drifting petals), Sunset, Day Drive (a car driving from morning through afternoon into night), Lighthouse, and Rainy City, plus the static Night Drive, Alpine, and Orbit. Each terminal cell shows two stacked pixels, so the scenes stay sharp. On macOS it also includes 11 animated ASCII scenes such as Moonlit, Koi Pond, and Sakura Dusk, inspired by [Claude Desktop Themes](https://github.com/0toshigami/claude-desktop-themes). The wallpaper fills the window and dims slightly behind the playlist so titles stay readable. A border marks the effect area and shows the current mode and signal status. The audio source appears under the Visualizer tab. Press `t` to cycle scenes and use `theme.motion=false` to pause wallpaper animation. Local image backgrounds are also available. Use a 256-color terminal for the full palette.
+The wallpaper picker (`T`) offers animated pixel scenes on every platform: Cat Window (a cat on the sill watching the moon rise), Torii Gate (a shrine gate in still water with drifting petals), Sunset, Day Drive (a car driving from morning through afternoon into night), Lighthouse, and Rainy City, plus the static Night Drive, Alpine, and Orbit. Each terminal cell shows two stacked pixels, so the scenes stay sharp. On macOS it also includes 11 animated ASCII scenes such as Moonlit, Koi Pond, and Sakura Dusk. The wallpaper fills the window and dims slightly behind the playlist so titles stay readable. A border marks the effect area and shows the current mode and signal status. The audio source appears under the Visualizer tab. Press `t` to cycle scenes and use `theme.motion=false` to pause wallpaper animation. Local image backgrounds are also available. Use a 256-color terminal for the full palette.
 
 ```sh
 scmp --view visualizer --theme koi-pond --mode spectrum
@@ -268,6 +268,14 @@ scmp --set visualizer.fps=30 --set visualizers=lava,spectrum,ellipse
     #Specifies the color scheme. The color scheme must be in ~/.scmp/colors/ directory. Default is "colors"
     colors.scheme=rainbow
 
+## Build your own
+
+Want your own player? Fork SCMP and make it yours: rename it, restyle it, add scenes, or swap in your own layout. For example, Tom Pearl could ship **TPCMP — Tom Pearl's CLI Music Player**. Keep the license notices, and then it is all yours.
+
+## Acknowledgements
+
+Inspired by [cli-visualizer](https://github.com/dpayne/cli-visualizer) and [Claude Desktop Themes](https://github.com/0toshigami/claude-desktop-themes).
+
 ## License
 
-SCMP is distributed under the MIT License. See [LICENSE](LICENSE) for the copyright and permission notice and [the bundled wallpaper license](vendor/claude-desktop-themes/LICENSE) for the wallpaper assets.
+SCMP is distributed under the MIT License. See [LICENSE](LICENSE) for the copyright and permission notice, and [the ASCII scene license](src/Writer/AsciiScenes/LICENSE) for the ASCII wallpaper scenes.
