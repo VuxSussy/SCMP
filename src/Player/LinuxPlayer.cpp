@@ -378,6 +378,7 @@ scmp::TrackTags scmp::load_track_tags(const MusicTrack &track)
     const auto info = probe(track.path);
     tags.title = info.title;
     tags.artist = info.artist;
+    tags.album = info.album;
     tags.duration = info.duration;
     return tags;
 }

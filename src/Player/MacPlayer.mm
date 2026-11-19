@@ -356,6 +356,10 @@ scmp::TrackTags scmp::load_track_tags(const MusicTrack &track)
             {
                 tags.artist = from_ns(item.stringValue);
             }
+            else if ([item.commonKey isEqualToString:AVMetadataCommonKeyAlbumName] && item.stringValue.length)
+            {
+                tags.album = from_ns(item.stringValue);
+            }
         }
         auto file = [[AVAudioFile alloc] initForReading:file_url(track.path) error:nil];
         if (file && file.processingFormat.sampleRate > 0)

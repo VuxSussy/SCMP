@@ -12,6 +12,7 @@ struct TrackTags
 {
     std::string title;
     std::string artist;
+    std::string album;
     double duration = 0;
 };
 

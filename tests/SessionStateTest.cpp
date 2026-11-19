@@ -42,8 +42,10 @@ TEST(SessionStateTest, KeepsVolumeShuffleRepeatAndReadsVersionOne)
     state.volume = 0.35;
     state.shuffle = true;
     state.repeat = 2;
+    state.layout = "spotify";
     EXPECT_TRUE(scmp::save_session(path, state));
     auto restored = scmp::read_session(path);
+    EXPECT_EQ(restored.layout, "spotify");
     EXPECT_DOUBLE_EQ(restored.volume, 0.35);
     EXPECT_TRUE(restored.shuffle);
     EXPECT_EQ(restored.repeat, 2);

@@ -160,11 +160,12 @@ void scmp::Visualizer::setup_transformers()
 }
 
 bool scmp::Visualizer::run(const std::string &config_path, std::string &mode, ViewMode &view,
-                           std::string &theme, const volatile std::sig_atomic_t &interrupted)
+                           std::string &theme, std::string &layout, const volatile std::sig_atomic_t &interrupted)
 {
     NcursesWriter writer(&m_settings);
     StudioView studio(m_settings.workspace, writer);
     studio.restore_theme(theme);
+    studio.restore_layout(layout);
     Plugins plugins;
     plugins.load(m_settings.workspace.plugin_directory, m_settings.workspace.enabled_plugins);
     set_sample_rate(m_configured_rate);
@@ -277,6 +278,13 @@ bool scmp::Visualizer::run(const std::string &config_path, std::string &mode, Vi
             continue;
         }
 
+        if (key == 'L')
+        {
+            studio.toggle_layout();
+            layout = studio.layout_name();
+            view = ViewMode::Player;
+            writer.set_surface(nullptr);
+        }
         if (key == 't')
         {
             studio.cycle_theme();
@@ -339,18 +347,34 @@ bool scmp::Visualizer::run(const std::string &config_path, std::string &mode, Vi
                 view = ViewMode::Player;
                 m_music.select_playing();
                 break;
+            case 'h':
+                if (in_player) studio.set_sidebar_focus(true);
+                break;
+            case 'l':
+                if (in_player) studio.set_sidebar_focus(false);
+                break;
             case KEY_UP:
             case 'k':
-                if (in_player) m_music.select(-1);
+                if (in_player && studio.sidebar_focus()) studio.sidebar_move(-1);
+                else if (in_player) m_music.select(-1);
                 break;
             case KEY_DOWN:
             case 'j':
-                if (in_player) m_music.select(1);
+                if (in_player && studio.sidebar_focus()) studio.sidebar_move(1);
+                else if (in_player) m_music.select(1);
                 break;
             case KEY_ENTER:
             case '\r':
             case '\n':
-                if (in_player) m_music.play_selected();
+                if (in_player && studio.sidebar_focus())
+                {
+                    m_music.filter(studio.sidebar_choice());
+                    studio.set_sidebar_focus(false);
+                }
+                else if (in_player)
+                {
+                    m_music.play_selected();
+                }
                 break;
             case KEY_PPAGE:
                 if (in_player) m_music.select(-10);

@@ -7,6 +7,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <cwchar>
+#include <map>
 
 namespace
 {
@@ -389,6 +390,8 @@ WINDOW *scmp::StudioView::begin_frame(const MusicSession &music, ViewMode view, 
 {
     erase();
     m_album_art.begin_frame();
+    m_now_art.begin_frame();
+    m_bar_art.begin_frame();
     m_stage_visible = false;
     const int rows = LINES;
     const int width = COLS;
@@ -396,6 +399,11 @@ WINDOW *scmp::StudioView::begin_frame(const MusicSession &music, ViewMode view, 
     {
         draw_label(stdscr, 0, 0, width, "Enlarge the terminal to use scmp.");
         return nullptr;
+    }
+    if (view == ViewMode::Player && m_layout == Layout::Spotify && width >= 70 && rows >= 20)
+    {
+        m_full_stage = false;
+        return begin_spotify_frame(music, effect, status);
     }
     const bool local = music.loaded();
     const bool stage = view == ViewMode::Visualizer;
@@ -550,7 +558,7 @@ WINDOW *scmp::StudioView::begin_frame(const MusicSession &music, ViewMode view, 
         draw_label(stdscr, rows - 1, width - 2 - position_width, position_width, position_label, gray());
     draw_hints(rows - 1, 2, content_width - position_width - 3,
                {{"?", "help"}, {"q", "quit"}, {"o", "folder"}, {"i", "Spotify"}, {"Tab", "view"},
-                {"s", "settings"}, {"p", "plugins"}}, cyan() | A_BOLD);
+                {"L", "layout"}, {"s", "settings"}, {"p", "plugins"}}, cyan() | A_BOLD);
 
     if (canvas.height < 4)
     {
@@ -813,6 +821,8 @@ void scmp::StudioView::finish_frame()
     wnoutrefresh(stdscr);
     doupdate();
     m_album_art.draw();
+    m_now_art.draw();
+    m_bar_art.draw();
 }
 
 bool scmp::StudioView::show_help(const volatile std::sig_atomic_t &interrupted)
@@ -830,6 +840,8 @@ bool scmp::StudioView::show_help(const volatile std::sig_atomic_t &interrupted)
         {"/", "filter, Esc clears"},
         {"C", "jump to the playing track"},
         {"g / G", "first / last track"},
+        {"L", "classic or Spotify-style layout"},
+        {"h / l", "library sidebar / songs (Spotify layout)"},
         {"", ""},
         {"", "Everywhere"},
         {"1 2 Tab", "visualizer / player"},
@@ -863,3 +875,5 @@ bool scmp::StudioView::show_help(const volatile std::sig_atomic_t &interrupted)
     }
     return false;
 }
+
+#include "Writer/SpotifyLayout.inc"

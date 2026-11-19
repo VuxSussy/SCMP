@@ -20,6 +20,10 @@ SCMP is a terminal music player with a local library, Spotify playlist import, a
 
 ![Player view](docs/screenshots/player.png)
 
+Press `L` in the Player for a Spotify-inspired layout: a library sidebar with your folder and artists, a playlist header tinted by the cover, a two-line song table, a now-playing panel with the visualizer, and a player bar. Press `h` to move into the library, `j`/`k` to choose an artist and Enter to show only their songs. SCMP remembers the layout you used last.
+
+![Spotify-inspired layout](docs/screenshots/spotify-layout.png)
+
 | Visualizer: spectrum | Visualizer: ellipse |
 | --- | --- |
 | ![Spectrum visualizer](docs/screenshots/visualizer-spectrum.png) | ![Ellipse visualizer](docs/screenshots/visualizer-ellipse.png) |
@@ -113,6 +117,8 @@ Start directly in Lava with `scmp --mode lava`. Move the mouse inside the lava s
 | <kbd>R</kbd> | repeat off → all → one |
 | <kbd>g</kbd> / <kbd>G</kbd> | first / last track |
 | <kbd>?</kbd> | show every key |
+| <kbd>L</kbd> | switch between the classic and Spotify-inspired layouts |
+| <kbd>h</kbd> / <kbd>l</kbd> | library sidebar / songs, in the Spotify-inspired layout |
 | <kbd>o</kbd> | open a local music folder |
 | <kbd>i</kbd> | import a public Spotify playlist and open the downloads in Player (macOS) |
 | <kbd>t</kbd> / <kbd>T</kbd> | cycle wallpapers / open the wallpaper picker |
@@ -134,7 +140,7 @@ Player shows the selected track’s cover and album details above the playlist w
 
 With `--music DIR`, the app starts in the Player when that folder has tracks and in the Visualizer when it is empty. Use `--view visualizer` or `--view player` to choose the opening view. Use `n`/`N` for next/previous, `←`/`→` to seek, `+`/`-` for volume, `z` for shuffle, `R` to cycle repeat, and `v` for the next visualizer effect. On macOS, the keyboard media keys, headphone controls and the Now Playing widget in Control Center also control playback. Press `o` in either view to open a folder in the Player.
 
-SCMP remembers the last view, effect, wallpaper choice, folder, filter, selection, playback position and status, volume, shuffle, and repeat when you exit. The session is stored beside the config as `config.session`. Command-line options override the corresponding restored choices.
+SCMP remembers the last view, layout, effect, wallpaper choice, folder, filter, selection, playback position and status, volume, shuffle, and repeat when you exit. The session is stored beside the config as `config.session`. Command-line options override the corresponding restored choices.
 
 Album covers appear as inline images in kitty and Ghostty (kitty graphics), iTerm2 and WezTerm (iTerm2 inline images), and foot, mlterm, Konsole and other sixel terminals. Set `SCMP_IMAGE_PROTOCOL` to `kitty`, `iterm`, `sixel` or `none` to override the detection. Inside tmux and screen, and in other terminals, SCMP uses the character-cell preview. The playlist reads the selected track's embedded cover, including MP3, M4A, and FLAC artwork. It also looks for `cover`, `folder`, `front`, and `album` JPEG or PNG files beside the track. A pixel record appears when no cover is found.
 

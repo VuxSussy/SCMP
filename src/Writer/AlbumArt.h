@@ -25,7 +25,8 @@ std::string encode_sixel(const PixelImage &image, int width, int height);
 class AlbumArt
 {
   public:
-    AlbumArt();
+    // Several AlbumArt objects can show images at once when each uses its own slot.
+    explicit AlbumArt(unsigned slot = 0);
     ~AlbumArt();
     void begin_frame() { m_image = nullptr; }
     bool place(const PixelImage &image, const std::string &path, int row, int col, int width, int height);
@@ -34,6 +35,7 @@ class AlbumArt
 
   private:
     ImageProtocol m_protocol = ImageProtocol::None;
+    unsigned m_id = 0;
     const PixelImage *m_image = nullptr;
     std::array<int, 4> m_area{}, m_displayed_area{};
     std::string m_path, m_displayed_path;

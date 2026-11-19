@@ -306,7 +306,8 @@ std::string scmp::encode_sixel(const PixelImage &image, int width, int height)
     return out;
 }
 
-scmp::AlbumArt::AlbumArt() : m_protocol(detect_image_protocol())
+scmp::AlbumArt::AlbumArt(unsigned slot)
+    : m_protocol(detect_image_protocol()), m_id(static_cast<unsigned>(getpid()) * 4u + slot)
 {
 }
 
@@ -330,7 +331,7 @@ void scmp::AlbumArt::clear()
     if (m_displayed_path.empty()) return;
     if (m_protocol == ImageProtocol::Kitty)
     {
-        std::printf("\033_Ga=d,d=I,i=%u,q=2\033\\", static_cast<unsigned>(getpid()));
+        std::printf("\033_Ga=d,d=I,i=%u,q=2\033\\", m_id);
         std::fflush(stdout);
     }
     else if (!isendwin())
@@ -364,8 +365,7 @@ void scmp::AlbumArt::draw()
             if (offset == 0)
             {
                 std::printf("\033_Ga=T,f=24,s=%d,v=%d,c=%d,r=%d,i=%u,C=1,q=2,m=%d;",
-                            m_image->width, m_image->height, m_area[2], m_area[3],
-                            static_cast<unsigned>(getpid()), more);
+                            m_image->width, m_image->height, m_area[2], m_area[3], m_id, more);
             }
             else
             {

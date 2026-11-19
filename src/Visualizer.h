@@ -17,6 +17,7 @@ class Visualizer
 
     // Reload settings when the editor saves.
     bool run(const std::string &config_path, std::string &mode, ViewMode &view, std::string &theme,
+             std::string &layout,
              const volatile std::sig_atomic_t &interrupted);
 
   private:

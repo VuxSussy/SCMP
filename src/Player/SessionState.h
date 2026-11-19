@@ -14,6 +14,7 @@ struct SessionState
     double volume = 1.0;
     bool shuffle = false;
     int repeat = 0;
+    std::string layout;
 };
 
 SessionState read_session(const std::string &path);

@@ -180,6 +180,7 @@ int main(int argc, char *argv[])
             const auto state_path = config_path + ".session";
             auto state = scmp::read_session(state_path);
             std::string selected_theme, configured_theme;
+            std::string layout = state.layout;
             bool first_run = true;
             std::vector<std::string> previous_modes;
             std::string previous_folder;
@@ -252,7 +253,7 @@ int main(int argc, char *argv[])
                 }
                 first_run = false;
                 scmp::Visualizer visualizer(settings, music);
-                if (!visualizer.run(config_path, mode, view, selected_theme, interrupted)) break;
+                if (!visualizer.run(config_path, mode, view, selected_theme, layout, interrupted)) break;
             }
             if (!first_run)
             {
@@ -261,6 +262,7 @@ int main(int argc, char *argv[])
                 state.view = view == scmp::ViewMode::Player ? "player" : "visualizer";
                 state.mode = mode;
                 state.theme = selected_theme;
+                state.layout = layout;
                 state.library_setting = previous_folder;
                 state.theme_setting = configured_theme;
                 music.remember(state);
