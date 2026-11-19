@@ -8,6 +8,8 @@
 #include <array>
 #include <csignal>
 #include <memory>
+#include <utility>
+#include <vector>
 
 namespace scmp
 {
@@ -23,6 +25,7 @@ class StudioView
     void draw_visualizer_frame(const std::string &mode, const char *signal, bool audible);
     void finish_frame();
     void clear_cover() { m_album_art.clear(); }
+    bool show_help(const volatile std::sig_atomic_t &interrupted);
     std::string theme_choice() const { return m_show_background ? "custom" : m_theme; }
     void restore_theme(const std::string &theme);
 
@@ -34,6 +37,17 @@ class StudioView
     void draw_playlist(const MusicSession &music, int x, int width, int top, int height);
     void draw_track_preview(const MusicSession &music, int x, int width, int top, int height);
     void draw_background(const std::string &scene, int stage_x, int top, int bottom, bool stage_visible);
+    struct Segment
+    {
+        // Accepts both int and chtype attributes without narrowing errors.
+        Segment(std::string value, long long attributes) : text(std::move(value)), style(static_cast<int>(attributes)) {}
+        std::string text;
+        int style;
+    };
+    int draw_segments(int row, int x, int width, const std::vector<Segment> &segments);
+    void draw_hints(int row, int x, int width, const std::vector<std::pair<std::string, std::string>> &hints,
+                    int key_style);
+    void fill_bar(int row, int x, int width, int background);
     void draw_label(WINDOW *surface, int row, int column, int width, const std::string &text,
                     int style = A_NORMAL);
 
@@ -54,6 +68,8 @@ class StudioView
     bool m_full_stage = false;
     // Wallpaper area dimmed behind the playlist: x, y, width, height.
     std::array<int, 4> m_dim{};
+    // Selected row (1-based), visible tracks, first shown row and rows shown, for the position counter.
+    std::array<size_t, 4> m_list_position{};
 };
 }
 

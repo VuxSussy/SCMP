@@ -4,7 +4,9 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
+#include <cwchar>
 
 namespace
 {
@@ -203,6 +205,98 @@ std::string timestamp(double seconds)
 }
 }
 
+namespace
+{
+// Ranger-inspired palette with 8-color fallbacks.
+int ink(int color256, int basic)
+{
+    if (COLORS >= 256) return COLOR_PAIR(color256);
+    return COLORS > basic ? COLOR_PAIR(basic) : A_NORMAL;
+}
+int green() { return ink(114, COLOR_GREEN); }
+int blue() { return ink(75, COLOR_BLUE); }
+int magenta() { return ink(176, COLOR_MAGENTA); }
+int cyan() { return ink(80, COLOR_CYAN); }
+int yellow() { return ink(221, COLOR_YELLOW); }
+int red() { return ink(203, COLOR_RED); }
+int gray() { return COLORS >= 256 ? COLOR_PAIR(245) : A_DIM; }
+
+size_t display_width(const std::string &text)
+{
+    std::mbstate_t state{};
+    size_t cells = 0;
+    for (size_t offset = 0; offset < text.size();)
+    {
+        wchar_t character = L' ';
+        auto consumed = std::mbrtowc(&character, text.data() + offset, text.size() - offset, &state);
+        if (consumed == 0 || consumed == static_cast<size_t>(-1) || consumed == static_cast<size_t>(-2))
+        {
+            state = {};
+            consumed = 1;
+        }
+        cells += static_cast<size_t>(std::max(0, wcwidth(character)));
+        offset += consumed;
+    }
+    return cells;
+}
+
+std::string home_relative(const std::string &path)
+{
+    const char *home = std::getenv("HOME");
+    if (home && *home && path.compare(0, std::strlen(home), home) == 0) return "~" + path.substr(std::strlen(home));
+    return path;
+}
+
+// Ranger's scroll indicator: All, Top, Bot or a percentage.
+std::string scroll_label(size_t first, size_t shown, size_t total)
+{
+    if (shown >= total) return "All";
+    if (first == 0) return "Top";
+    if (first + shown >= total) return "Bot";
+    return std::to_string(first * 100 / (total - shown)) + "%";
+}
+}
+
+void scmp::StudioView::fill_bar(int row, int x, int width, int background)
+{
+    if (width <= 0) return;
+    m_writer.set_colors(stdscr, -1, background);
+    mvwhline(stdscr, row, x, ' ', width);
+    wattrset(stdscr, A_NORMAL);
+}
+
+int scmp::StudioView::draw_segments(int row, int x, int width, const std::vector<Segment> &segments)
+{
+    int column = x;
+    for (const auto &segment : segments)
+    {
+        const int cells = static_cast<int>(display_width(segment.text));
+        if (column - x + cells > width) break;
+        draw_label(stdscr, row, column, x + width - column, segment.text, segment.style);
+        column += cells;
+    }
+    return column - x;
+}
+
+void scmp::StudioView::draw_hints(int row, int x, int width, const std::vector<std::pair<std::string, std::string>> &hints,
+                                  int key_style)
+{
+    std::vector<Segment> segments;
+    for (size_t i = 0; i < hints.size(); ++i)
+    {
+        // Each hint must fit whole, so measure it before adding it.
+        const auto gap = i ? std::string("   ") : std::string();
+        std::vector<Segment> next = segments;
+        next.push_back({gap + hints[i].first, key_style});
+        next.push_back({" " + hints[i].second, gray()});
+        size_t cells = 0;
+        for (const auto &segment : next) cells += display_width(segment.text);
+        if (static_cast<int>(cells) > width) break;
+        segments = std::move(next);
+    }
+    draw_segments(row, x, width, segments);
+}
+
 scmp::StudioView::StudioView(const WorkspaceSettings &settings, NcursesWriter &writer)
     : m_writer(writer), m_theme(settings.theme), m_theme_motion(settings.theme_motion)
 {
@@ -335,8 +429,29 @@ WINDOW *scmp::StudioView::begin_frame(const MusicSession &music, ViewMode view, 
         const int x = width - 2 - static_cast<int>(brand.size());
         draw_label(stdscr, 0, x, width - x - 1, brand, A_DIM);
     }
-    draw_label(stdscr, 1, 2, content_width, stage ? std::string(input) :
-              local ? music.directory() : "Music library", A_DIM);
+    {
+        const char *user = std::getenv("USER");
+        std::vector<Segment> path{{std::string(user && *user ? user : "you") + "@scmp ", green() | A_BOLD}};
+        if (stage) path.push_back({input, blue() | A_BOLD});
+        else if (!local) path.push_back({"no folder open", blue() | A_BOLD});
+        else
+        {
+            path.push_back({home_relative(music.directory()) + "/", blue() | A_BOLD});
+            if (!music.visible_tracks().empty())
+            {
+                const auto &file = music.tracks()[music.selected()].path;
+                path.push_back({file.substr(file.find_last_of('/') + 1), A_BOLD});
+            }
+        }
+        // Long paths keep their start, like ranger's title bar.
+        int column = 2;
+        for (const auto &segment : path)
+        {
+            if (column >= width - 2) break;
+            draw_label(stdscr, 1, column, width - 2 - column, segment.text, segment.style);
+            column += static_cast<int>(display_width(segment.text));
+        }
+    }
     const std::wstring rule(content_width, L'─');
     m_writer.write_over(stdscr, 2, 2, rule, A_DIM);
     m_writer.write_over(stdscr, bottom, 2, rule, A_DIM);
@@ -361,65 +476,81 @@ WINDOW *scmp::StudioView::begin_frame(const MusicSession &music, ViewMode view, 
     const bool has_track = player && player->duration() > 0;
     const auto position = has_track ? player->elapsed() : 0.0;
     const auto duration = has_track ? player->duration() : 0.0;
-    const auto playback = has_track
-        ? (player->playing() ? "▶ " : player->finished() ? "■ " : "Ⅱ ") + music.now_playing() : "";
     if (has_track)
     {
-        std::string modes;
-        if (music.shuffle()) modes += "Shuffle  ";
-        if (music.repeat() == RepeatMode::All) modes += "Repeat  ";
-        if (music.repeat() == RepeatMode::One) modes += "Repeat one  ";
-        if (width >= 60) modes += "Vol " + std::to_string(static_cast<int>(std::lround(music.volume() * 100))) + "%  ";
-        const auto elapsed = modes + timestamp(position) + " / " + timestamp(duration);
-        const int time_x = width - 2 - static_cast<int>(elapsed.size());
-        draw_label(stdscr, bottom + 1, 2, time_x - 3, playback, accent);
-        draw_label(stdscr, bottom + 1, time_x, width - time_x - 1, elapsed, A_DIM);
+        // Right: modes, volume and time as colored segments. Left: state, title and artist.
+        std::vector<Segment> right;
+        if (music.shuffle()) right.push_back({"shuffle  ", magenta() | A_BOLD});
+        if (music.repeat() != RepeatMode::Off)
+            right.push_back({music.repeat() == RepeatMode::One ? "repeat:one  " : "repeat  ", magenta() | A_BOLD});
+        if (width >= 60)
+            right.push_back({"vol " + std::to_string(static_cast<int>(std::lround(music.volume() * 100))) + "%  ", yellow()});
+        right.push_back({timestamp(position) + " / " + timestamp(duration), cyan()});
+        int right_width = 0;
+        for (const auto &segment : right) right_width += static_cast<int>(display_width(segment.text));
+        const int time_x = width - 2 - right_width;
+        draw_segments(bottom + 1, time_x, right_width, right);
+        const auto &details = music.playing_details();
+        std::vector<Segment> left{
+            {player->playing() ? "▶ " : player->finished() ? "■ " : "Ⅱ ", green() | A_BOLD},
+            {music.now_playing(), A_BOLD}};
+        if (!details.artist.empty()) left.push_back({" · " + details.artist, gray()});
+        // The title may be cut, but the artist only shows when it fits whole.
+        const int title_room = time_x - 5;
+        draw_label(stdscr, bottom + 1, 2, 2, left[0].text, left[0].style);
+        draw_label(stdscr, bottom + 1, 4, title_room - 2, left[1].text, left[1].style);
+        const int used = 2 + static_cast<int>(display_width(left[1].text));
+        if (left.size() > 2 && used + static_cast<int>(display_width(left[2].text)) <= title_room)
+            draw_label(stdscr, bottom + 1, 2 + used, title_room - used, left[2].text, left[2].style);
         const int fill = std::max(0, std::min(content_width, static_cast<int>(content_width * position / duration)));
-        m_writer.write_over(stdscr, bottom + 2, 2, std::wstring(content_width, L'╌'), A_DIM);
+        m_writer.write_over(stdscr, bottom + 2, 2, std::wstring(content_width, L'─'), gray());
         if (fill > 0)
         {
-            m_writer.write_over(stdscr, bottom + 2, 2, rule.substr(0, static_cast<size_t>(fill)), accent);
+            m_writer.write_over(stdscr, bottom + 2, 2, std::wstring(static_cast<size_t>(fill), L'━'), green());
         }
     }
 
     const auto &message = stage && !status.empty() ? status :
                           !music.error().empty() ? music.error() : m_background_error;
-    std::string controls;
+    using Hints = std::vector<std::pair<std::string, std::string>>;
+    Hints controls;
     if (!stage)
-    {
-        controls = width >= 100 ? "Enter play   Space pause   ←/→ seek   +/- volume   n/N next/prev   z shuffle   R repeat   / filter   v effect" :
-                   width >= 67 ? "Enter play   Space pause   ←/→ seek   +/- vol   n/N next/prev   / filter" :
-                                 "Enter play   / filter   v effect";
-    }
+        controls = {{"Enter", "play"}, {"Space", "pause"}, {"←/→", "seek"}, {"+/-", "volume"},
+                    {"n/N", "next/prev"}, {"z", "shuffle"}, {"R", "repeat"}, {"/", "filter"}, {"v", "effect"}};
     else if (effect == "lava")
-    {
-        controls = width >= 46 ? "Mouse/arrows interact   v effect" : "Arrows interact   v effect";
-    }
+        controls = {{"mouse/arrows", "interact"}, {"v", "effect"}, {"T", "wallpaper"}};
     else if (has_track)
-    {
-        controls = width >= 82 ? "v effect   T wallpaper   Space pause   ←/→ seek   +/- volume   n/N next/prev" :
-                   width >= 56 ? "v effect   T wallpaper   Space pause   n/N next/prev" : "v effect  Space pause";
-    }
+        controls = {{"v", "effect"}, {"T", "wallpaper"}, {"Space", "pause"}, {"←/→", "seek"}, {"+/-", "volume"},
+                    {"n/N", "next/prev"}};
     else
-    {
-        controls = width >= 46 ? "v effect   T wallpaper   r reconnect" : "v effect  T theme  r audio";
-    }
+        controls = {{"v", "effect"}, {"T", "wallpaper"}, {"r", "reconnect"}};
     if (!message.empty() && !has_track)
     {
-        draw_label(stdscr, bottom + 1, 2, content_width, message, A_BOLD);
+        draw_label(stdscr, bottom + 1, 2, content_width, message, (music.error().empty() ? yellow() : red()) | A_BOLD);
     }
     else if (!has_track && !stage)
     {
         draw_label(stdscr, bottom + 1, 2, content_width, music.visible_tracks().empty() ?
-                   "Choose a music source" : "Select a track with ↑/↓", A_DIM);
+                   "-- no music --  press o to open a folder" : "-- stopped --  Enter plays the selection", gray());
     }
-    draw_label(stdscr, rows - 2, 2, content_width,
-               !message.empty() && has_track ? message : controls,
-               !message.empty() && has_track ? A_BOLD : A_DIM);
-    draw_label(stdscr, rows - 1, 2, content_width,
-               width < 57 ? "i Spotify o Folder q Quit" :
-               width < 76 ? "i Spotify   o Folder   Tab View   s Settings   q Quit" :
-                            "i Spotify   o Folder   Tab View   s Settings   p Plugins   q Quit", accent);
+    if (!message.empty() && has_track)
+        draw_label(stdscr, rows - 2, 2, content_width, message, (music.error().empty() ? yellow() : red()) | A_BOLD);
+    else
+        draw_hints(rows - 2, 2, content_width, controls, yellow() | A_BOLD);
+
+    // Last line: app commands on the left, ranger's position counter on the right.
+    std::string position_label;
+    if (!stage && m_list_position[1] > 0)
+    {
+        position_label = std::to_string(m_list_position[0]) + "/" + std::to_string(m_list_position[1]) + "  " +
+                         scroll_label(m_list_position[2], m_list_position[3], m_list_position[1]);
+    }
+    const int position_width = static_cast<int>(display_width(position_label));
+    if (position_width)
+        draw_label(stdscr, rows - 1, width - 2 - position_width, position_width, position_label, gray());
+    draw_hints(rows - 1, 2, content_width - position_width - 3,
+               {{"?", "help"}, {"q", "quit"}, {"o", "folder"}, {"i", "Spotify"}, {"Tab", "view"},
+                {"s", "settings"}, {"p", "plugins"}}, cyan() | A_BOLD);
 
     if (canvas.height < 4)
     {
@@ -452,9 +583,9 @@ void scmp::StudioView::draw_playlist(const MusicSession &music, int x, int width
     const auto count = music.query().empty() ? std::to_string(tracks.size())
         : std::to_string(visible.size()) + "/" + std::to_string(tracks.size());
     const auto tally = count + (tracks.size() == 1 ? " track" : " tracks");
-    draw_label(stdscr, top, x, width - static_cast<int>(tally.size()) - 1, "Playlist", A_BOLD);
+    draw_label(stdscr, top, x, width - static_cast<int>(tally.size()) - 1, "Playlist", blue() | A_BOLD);
     draw_label(stdscr, top, x + width - static_cast<int>(tally.size()),
-               static_cast<int>(tally.size()), tally, A_DIM);
+               static_cast<int>(tally.size()), tally, gray());
     const int digits = static_cast<int>(std::to_string(tracks.size()).size());
     // Columns: marker and number, title, artist (when wide enough), duration.
     const int title_x = x + digits + 5;
@@ -467,9 +598,9 @@ void scmp::StudioView::draw_playlist(const MusicSession &music, int x, int width
     if (music.query().empty())
     {
         draw_label(stdscr, top + 1, x, digits + 2, std::string(static_cast<size_t>(digits + 1), ' ') + "#", A_DIM);
-        draw_label(stdscr, top + 1, title_x, title_width, "Title", A_DIM);
-        if (artist_width) draw_label(stdscr, top + 1, artist_x, artist_width, "Artist", A_DIM);
-        if (time_width) draw_label(stdscr, top + 1, time_x + 1, time_width - 1, " Time", A_DIM);
+        draw_label(stdscr, top + 1, title_x, title_width, "Title", gray());
+        if (artist_width) draw_label(stdscr, top + 1, artist_x, artist_width, "Artist", gray());
+        if (time_width) draw_label(stdscr, top + 1, time_x + 1, time_width - 1, " Time", gray());
     }
     else
     {
@@ -477,6 +608,7 @@ void scmp::StudioView::draw_playlist(const MusicSession &music, int x, int width
     }
     if (visible.empty())
     {
+        m_list_position = {};
         draw_label(stdscr, top + 2, x, width, tracks.empty() ?
             music.loaded() ? "No playable files in this folder." : "Press i for Spotify or o for a folder."
             : "No matches. Esc clears the filter.", A_NORMAL);
@@ -496,6 +628,7 @@ void scmp::StudioView::draw_playlist(const MusicSession &music, int x, int width
     {
         m_queue_start = selection - capacity + 1;
     }
+    m_list_position = {selection + 1, visible.size(), m_queue_start, capacity};
 
     for (size_t row = m_queue_start; row < visible.size() && row - m_queue_start < capacity; ++row)
     {
@@ -503,22 +636,24 @@ void scmp::StudioView::draw_playlist(const MusicSession &music, int x, int width
         const int y = first_row + static_cast<int>(row - m_queue_start);
         const bool selected = row == selection;
         const bool playing = music.active() == index;
-        const int style = selected ? A_REVERSE : playing ? A_BOLD : A_NORMAL;
+        int style = playing ? green() | A_BOLD : A_NORMAL;
         if (selected)
         {
-            m_writer.write_over(stdscr, y, x, std::wstring(width, L' '), A_REVERSE);
+            // A solid bar like ranger's cursor line.
+            fill_bar(y, x, width, COLORS >= 256 ? (playing ? 114 : 176) : COLOR_MAGENTA);
+            style = (COLORS >= 256 ? COLOR_PAIR(16) : A_REVERSE) | A_BOLD;
         }
         const auto number = std::to_string(index + 1);
         const auto tags = music.tags(index);
         const auto prefix = (playing ? "▶ " : "  ") + std::string(digits - number.size(), ' ') + number;
         draw_label(stdscr, y, x, title_x - x, prefix, style);
         draw_label(stdscr, y, title_x, title_width, tags.title, style);
-        if (artist_width) draw_label(stdscr, y, artist_x, artist_width, tags.artist, selected ? style : A_DIM);
+        if (artist_width) draw_label(stdscr, y, artist_x, artist_width, tags.artist, selected ? style : cyan());
         if (time_width && tags.duration > 0)
         {
             const auto length = timestamp(tags.duration);
             const int column = x + width - static_cast<int>(length.size());
-            draw_label(stdscr, y, column, static_cast<int>(length.size()), length, selected ? style : A_DIM);
+            draw_label(stdscr, y, column, static_cast<int>(length.size()), length, selected ? style : gray());
         }
     }
 }
@@ -678,4 +813,53 @@ void scmp::StudioView::finish_frame()
     wnoutrefresh(stdscr);
     doupdate();
     m_album_art.draw();
+}
+
+bool scmp::StudioView::show_help(const volatile std::sig_atomic_t &interrupted)
+{
+    static const char *const keys[][2] = {
+        {"", "Player"},
+        {"j/k ↑/↓", "move selection"},
+        {"Enter", "play selection"},
+        {"Space", "pause or resume"},
+        {"←/→", "seek 5 seconds"},
+        {"+/-", "volume"},
+        {"n / N", "next / previous track"},
+        {"z", "shuffle"},
+        {"R", "repeat off / all / one"},
+        {"/", "filter, Esc clears"},
+        {"C", "jump to the playing track"},
+        {"g / G", "first / last track"},
+        {"", ""},
+        {"", "Everywhere"},
+        {"1 2 Tab", "visualizer / player"},
+        {"v", "next visualizer effect"},
+        {"t / T", "next wallpaper / wallpaper picker"},
+        {"o", "open a music folder"},
+        {"i", "import a Spotify playlist"},
+        {"s / p", "settings / plugins"},
+        {"q", "quit"},
+    };
+    timeout(100);
+    while (!interrupted)
+    {
+        erase();
+        draw_label(stdscr, 0, 0, COLS, "scmp keys", green() | A_BOLD);
+        int row = 2;
+        for (const auto &entry : keys)
+        {
+            if (row >= LINES - 1) break;
+            if (!*entry[0])
+            {
+                draw_label(stdscr, row++, 2, COLS - 4, entry[1], blue() | A_BOLD);
+                continue;
+            }
+            draw_label(stdscr, row, 4, 12, entry[0], yellow() | A_BOLD);
+            draw_label(stdscr, row++, 18, COLS - 20, entry[1], A_NORMAL);
+        }
+        draw_label(stdscr, LINES - 1, 0, COLS, "press any key to return", gray());
+        refresh();
+        if (getch() != ERR) return true;
+    }
+    return false;
 }

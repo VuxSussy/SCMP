@@ -221,7 +221,8 @@ bool scmp::Visualizer::run(const std::string &config_path, std::string &mode, Vi
         }
 
         if (key == KEY_RESIZE) studio.clear_cover();
-        if (key == 's' || key == 'p' || key == 'o' || key == 'i' || key == 'T' || (key == '/' && m_music.loaded()))
+        if (key == 's' || key == 'p' || key == 'o' || key == 'i' || key == 'T' || key == '?' ||
+            (key == '/' && m_music.loaded()))
         {
             mouse.set(false);
             studio.clear_cover();
@@ -235,6 +236,7 @@ bool scmp::Visualizer::run(const std::string &config_path, std::string &mode, Vi
                 return true;
             }
             if (key == 'p') plugins.menu(config_path, interrupted);
+            if (key == '?') studio.show_help(interrupted);
             if (key == 'T' && studio.choose_theme(interrupted)) theme = studio.theme_choice();
             if (key == 'i')
             {
@@ -356,9 +358,11 @@ bool scmp::Visualizer::run(const std::string &config_path, std::string &mode, Vi
             case KEY_NPAGE:
                 if (in_player) m_music.select(10);
                 break;
+            case 'g':
             case KEY_HOME:
                 if (in_player) m_music.select(-static_cast<int>(m_music.selected_row()));
                 break;
+            case 'G':
             case KEY_END:
                 if (in_player) m_music.select(static_cast<int>(m_music.visible_tracks().size()));
                 break;

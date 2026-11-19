@@ -111,6 +111,8 @@ Start directly in Lava with `scmp --mode lava`. Move the mouse inside the lava s
 | <kbd>n</kbd> / <kbd>N</kbd> | next / previous track |
 | <kbd>z</kbd> | shuffle on or off |
 | <kbd>R</kbd> | repeat off → all → one |
+| <kbd>g</kbd> / <kbd>G</kbd> | first / last track |
+| <kbd>?</kbd> | show every key |
 | <kbd>o</kbd> | open a local music folder |
 | <kbd>i</kbd> | import a public Spotify playlist and open the downloads in Player (macOS) |
 | <kbd>t</kbd> / <kbd>T</kbd> | cycle wallpapers / open the wallpaper picker |
