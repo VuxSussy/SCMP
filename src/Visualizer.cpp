@@ -517,10 +517,15 @@ bool scmp::Visualizer::run(const std::string &config_path, std::string &mode, Vi
                                          details.album, &details.cover, player->duration(), player->elapsed(),
                                          player->playing()};
             media.update(&now_playing);
+            const ScmpNowPlaying plugin_track{now_playing.track.c_str(), now_playing.title.c_str(),
+                                              now_playing.artist.c_str(), now_playing.album.c_str(),
+                                              now_playing.duration, now_playing.elapsed, now_playing.playing ? 1 : 0};
+            plugins.now_playing(&plugin_track);
         }
         else
         {
             media.update(nullptr);
+            plugins.now_playing(nullptr);
         }
         if (has_local_track != using_local_audio)
         {
