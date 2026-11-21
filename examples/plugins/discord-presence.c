@@ -5,7 +5,9 @@
  *   1. Create an application at https://discord.com/developers/applications (its name, for example
  *      "scmp", shows on the activity card) and copy its Application ID.
  *   2. Save the ID in ~/.scmp/discord-client-id, or set SCMP_DISCORD_CLIENT_ID.
- *   3. Optional: under Rich Presence > Art Assets, upload a picture named "scmp" for the large image.
+ *   3. Optional: the large image is an animated visualizer GIF. To use another picture, put an https
+ *      URL (GIF, PNG, WebP) or the name of an uploaded Rich Presence art asset in ~/.scmp/discord-image,
+ *      or set SCMP_DISCORD_IMAGE.
  *   4. Enable discord-presence with P in scmp, and keep the Discord desktop app running.
  *
  * The activity follows scmp's own player: it clears when the song is paused, ends, or scmp quits.
@@ -30,7 +32,8 @@
 #define SEND_GAP 2.0     /* seconds between updates; Discord allows about 5 every 20 seconds */
 #define RETRY_GAP 15.0   /* seconds between connection attempts while Discord is closed */
 #define IO_TIMEOUT 2     /* seconds before a stuck read or write gives up */
-#define LARGE_IMAGE "scmp"
+/* The animated visualizer in docs/discord. Uploaded art assets cannot be animated, but URLs can. */
+#define DEFAULT_IMAGE "https://raw.githubusercontent.com/VuxSussy/SCMP/main/docs/discord/scmp.gif"
 
 #ifdef MSG_NOSIGNAL
 #define SEND_FLAGS MSG_NOSIGNAL
@@ -115,15 +118,20 @@ static void add(Buffer *b, const char *format, ...)
     if (b->used >= sizeof b->data) b->used = sizeof b->data - 1;
 }
 
-/* Adds "key":"text" as JSON. Discord rejects text shorter than two characters, so pad it. */
-static void add_string(Buffer *b, const char *key, const char *text)
+static void add_escaped(Buffer *b, const char *text)
 {
-    add(b, ",\"%s\":\"", key);
     for (const unsigned char *c = (const unsigned char *)text; *c; ++c) {
         if (*c == '"' || *c == '\\') add(b, "\\%c", *c);
         else if (*c < 0x20) add(b, "\\u%04x", *c);
         else add(b, "%c", *c);
     }
+}
+
+/* Adds "key":"text" as JSON. Discord rejects text shorter than two characters, so pad it. */
+static void add_string(Buffer *b, const char *key, const char *text)
+{
+    add(b, ",\"%s\":\"", key);
+    add_escaped(b, text);
     add(b, "%s\"", strlen(text) < 2 ? "\\u200b\\u200b" : "");
 }
 
@@ -263,27 +271,6 @@ static int drain(int fd)
     return 1;
 }
 
-static int send_activity(int fd, const Track *track)
-{
-    static unsigned nonce;
-    Buffer b = {{0}, 0};
-    add(&b, "{\"cmd\":\"SET_ACTIVITY\",\"nonce\":\"%u\",\"args\":{\"pid\":%d", ++nonce, (int)getpid());
-    if (track->loaded && track->playing) {
-        /* type 2 is "Listening to"; status_display_type 2 puts the title (details) in the member list. */
-        add(&b, ",\"activity\":{\"type\":2,\"status_display_type\":2");
-        add_string(&b, "details", track->title);
-        if (*track->artist) add_string(&b, "state", track->artist);
-        const long long start = llround(track->started * 1000.0);
-        add(&b, ",\"timestamps\":{\"start\":%lld", start);
-        if (track->duration > 0) add(&b, ",\"end\":%lld", start + llround(track->duration * 1000.0));
-        add(&b, "},\"assets\":{\"large_image\":\"" LARGE_IMAGE "\"");
-        if (*track->album) add_string(&b, "large_text", track->album);
-        add(&b, "}}");
-    }
-    add(&b, "}}");
-    return write_frame(fd, OP_FRAME, b.data, b.used);
-}
-
 /* ---- settings ---- */
 
 static int valid_id(const char *id)
@@ -295,27 +282,61 @@ static int valid_id(const char *id)
     return 1;
 }
 
-/* Read on every connection attempt, so adding the ID later needs no restart. */
-static int read_client_id(char *out, size_t size)
+/* Reads a setting from the environment or the first line of ~/.scmp/<file_name>. Read on every
+ * use, so changing it needs no restart. Returns 0 when it is not set. */
+static int read_setting(const char *env_name, const char *file_name, char *out, size_t size)
 {
-    const char *env = getenv("SCMP_DISCORD_CLIENT_ID");
+    const char *env = getenv(env_name);
     if (env && *env) {
         copy_text(out, size, env);
-        return valid_id(out);
+        return 1;
     }
     const char *home = getenv("HOME");
     if (!home) return 0;
     char path[512];
-    snprintf(path, sizeof path, "%s/.scmp/discord-client-id", home);
+    snprintf(path, sizeof path, "%s/.scmp/%s", home, file_name);
     FILE *file = fopen(path, "r");
     if (!file) return 0;
-    char line[64] = {0};
+    char line[512] = {0};
     const int ok = fgets(line, sizeof line, file) != NULL;
     fclose(file);
     if (!ok) return 0;
     line[strcspn(line, " \t\r\n")] = 0;
     copy_text(out, size, line);
-    return valid_id(out);
+    return *out != 0;
+}
+
+static int read_client_id(char *out, size_t size)
+{
+    return read_setting("SCMP_DISCORD_CLIENT_ID", "discord-client-id", out, size) && valid_id(out);
+}
+
+/* ---- activity ---- */
+
+static int send_activity(int fd, const Track *track)
+{
+    static unsigned nonce;
+    Buffer b = {{0}, 0};
+    add(&b, "{\"cmd\":\"SET_ACTIVITY\",\"nonce\":\"%u\",\"args\":{\"pid\":%d", ++nonce, (int)getpid());
+    if (track->loaded && track->playing) {
+        char image[300];
+        if (!read_setting("SCMP_DISCORD_IMAGE", "discord-image", image, sizeof image))
+            copy_text(image, sizeof image, DEFAULT_IMAGE);
+        /* type 2 is "Listening to"; status_display_type 2 puts the title (details) in the member list. */
+        add(&b, ",\"activity\":{\"type\":2,\"status_display_type\":2");
+        add_string(&b, "details", track->title);
+        if (*track->artist) add_string(&b, "state", track->artist);
+        const long long start = llround(track->started * 1000.0);
+        add(&b, ",\"timestamps\":{\"start\":%lld", start);
+        if (track->duration > 0) add(&b, ",\"end\":%lld", start + llround(track->duration * 1000.0));
+        add(&b, "},\"assets\":{\"large_image\":\"");
+        add_escaped(&b, image);
+        add(&b, "\"");
+        if (*track->album) add_string(&b, "large_text", track->album);
+        add(&b, "}}");
+    }
+    add(&b, "}}");
+    return write_frame(fd, OP_FRAME, b.data, b.used);
 }
 
 /* ---- worker thread ---- */
