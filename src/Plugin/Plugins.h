@@ -20,6 +20,8 @@ class Plugins
     void draw_background(const ScmpPluginFrame &frame, WINDOW *surface, NcursesWriter &writer) const;
     void draw_visualizer(const ScmpPluginFrame &frame, WINDOW *surface, NcursesWriter &writer) const;
     void draw_overlay(const ScmpPluginFrame &frame, WINDOW *surface, NcursesWriter &writer) const;
+    // Passes the local player's track (nullptr when none) to plugins that export scmp_plugin_now_playing.
+    void now_playing(const ScmpNowPlaying *now) const;
 
   private:
     struct Close
@@ -36,6 +38,7 @@ class Plugins
         // Version 2 plugins: their layers are copied into v1 so the drawing code serves both.
         const ScmpPluginV2 *api2 = nullptr;
         std::unique_ptr<ScmpPluginV1> layers;
+        decltype(&scmp_plugin_now_playing) now_playing = nullptr;
     };
 
     void draw(const ScmpPluginFrame &frame, WINDOW *surface, NcursesWriter &writer, ScmpPluginDraw ScmpPluginV1::*layer,

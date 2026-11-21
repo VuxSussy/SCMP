@@ -47,6 +47,26 @@ typedef struct {
 const ScmpPluginV1 *scmp_plugin_v1(void);
 
 /* ------------------------------------------------------------------------------------------------
+ * Playback hook. Any plugin can also export scmp_plugin_now_playing to follow scmp's own player, for
+ * example to share the song with another app. scmp calls it once per frame on every screen with the
+ * loaded track, or NULL when nothing is loaded or the track ended. It runs on the UI thread: return
+ * quickly and do slow work (network, files) on a thread of your own. Strings are UTF-8 and valid only
+ * during the call. A plugin with only this hook exports scmp_plugin_v1 with every layer NULL.
+ * ------------------------------------------------------------------------------------------------ */
+
+typedef struct {
+    const char *path;
+    const char *title;
+    const char *artist; /* may be empty */
+    const char *album;  /* may be empty */
+    double duration;    /* seconds */
+    double elapsed;     /* seconds */
+    int playing;        /* 0 while paused */
+} ScmpNowPlaying;
+
+void scmp_plugin_now_playing(const ScmpNowPlaying *now);
+
+/* ------------------------------------------------------------------------------------------------
  * Version 2 adds layout plugins. A layout plugin draws the whole Player screen from a snapshot of
  * the library and playback, and can answer keys by sending commands back to scmp. Export
  * scmp_plugin_v2 instead of (or as well as) scmp_plugin_v1. Every pointer in ScmpLayout is valid

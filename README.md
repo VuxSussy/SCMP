@@ -185,7 +185,7 @@ If some tracks fail, `download` reports how many are ready and exits with a fail
 
 Press `P` or run `scmp --plugins` to list plugins, check load errors, and enable or disable a plugin with Enter. The manager looks in `~/.scmp/plugins` by default. Set `plugins.directory` to use another folder. Native plugins execute with the same permissions as `scmp`, so only enable plugins you trust.
 
-Build and try the bundled plugins, the Pulse Grid stereo oscilloscope and the Spotify-style layout:
+Build and try the bundled plugins: the Pulse Grid stereo oscilloscope, the Spotify-style layout, and [Discord Rich Presence](#discord-rich-presence):
 
 ```sh
 make plugins
@@ -196,6 +196,28 @@ make plugins
 Select a plugin and press Enter to enable it. `./install.sh` also copies them to `~/.scmp/plugins`. Use [include/scmp/plugin.h](include/scmp/plugin.h) and [the Pulse Grid example](examples/plugins/pulse-grid.c) to write a plugin in C or C++. Export `scmp_plugin_v1` and provide any combination of `background`, `visualizer`, and `overlay` callbacks. Each callback receives a clipped terminal canvas, stereo samples, the current mode, and playback information. Backgrounds draw after the selected theme, and overlays draw after the visualizer. If multiple plugins replace the visualizer, the first by filename is used.
 
 Layout plugins export `scmp_plugin_v2` and draw the whole Player screen. Each frame `layout_draw` receives an `ScmpLayout`: the library (tracks with tags, playlists, the visible list and selection), playback state, and callbacks to draw text with foreground and background colors, fill areas, place cover art, and reserve room for the visualizer. `layout_key` sees Player keys first and answers them by sending commands such as play, seek, search or switch playlist; keys it does not handle keep their usual action. [The Spotify-style layout](examples/plugins/spotify-layout.c) is a complete example.
+
+Any plugin can also export `scmp_plugin_now_playing` to follow scmp's player on every screen: it receives the loaded track's path, tags, duration, position and play state once per frame, or `NULL` when nothing is loaded. It runs on the UI thread, so do slow work on a thread of your own, as [the Discord plugin](examples/plugins/discord-presence.c) does.
+
+### Discord Rich Presence
+
+The Discord plugin shows "Listening to" with the title, artist, album and a progress bar while a song plays in scmp's player. The activity clears when you pause, the song ends, or scmp quits. It needs the Discord desktop app running and a Discord application ID:
+
+1. Create an application at the [Discord Developer Portal](https://discord.com/developers/applications). Its name (for example "scmp") shows on the activity card. Copy its Application ID.
+2. Save the ID: `echo YOUR_APPLICATION_ID > ~/.scmp/discord-client-id` (or set `SCMP_DISCORD_CLIENT_ID`).
+3. Optional: under Rich Presence > Art Assets, upload a picture named `scmp` for the large image.
+4. Run `./install.sh` (or `make plugins` and copy `build/plugins/discord-presence.dylib` to `~/.scmp/plugins`), then press `P` in scmp and enable `discord-presence`.
+5. In Discord, turn on User Settings > Activity Privacy > "Share your detected activities with others".
+6. Play a song in scmp. Your profile shows it within a few seconds.
+
+Songs from system audio (Spotify, a browser) have no track details, so only scmp's own player is shared.
+
+If nothing shows up:
+
+- Run `which scmp` and check that it is the build you just installed. An older scmp earlier in your `PATH` (for example in `~/.local/bin`) loads the plugin but never tells it what is playing.
+- Use the Discord desktop app. Discord in a browser does not accept Rich Presence from other apps.
+- Check that `~/.scmp/discord-client-id` holds only the Application ID, the number from the portal.
+- The song must be playing, not paused. If you opened Discord after scmp, wait about 15 seconds for the plugin to reconnect.
 
 ## Configuration
 

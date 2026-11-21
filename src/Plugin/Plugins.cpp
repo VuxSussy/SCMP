@@ -101,6 +101,11 @@ void scmp::Plugins::load(const std::string &folder, const std::string &enabled)
                         entry.layers.reset();
                         entry.handle.reset();
                     }
+                    else
+                    {
+                        entry.now_playing = reinterpret_cast<decltype(&scmp_plugin_now_playing)>(
+                            dlsym(entry.handle.get(), "scmp_plugin_now_playing"));
+                    }
                 }
             }
             entries.push_back(std::move(entry));
@@ -182,6 +187,14 @@ void scmp::Plugins::draw_visualizer(const ScmpPluginFrame &frame, WINDOW *surfac
 void scmp::Plugins::draw_overlay(const ScmpPluginFrame &frame, WINDOW *surface, NcursesWriter &writer) const
 {
     draw(frame, surface, writer, &ScmpPluginV1::overlay, false);
+}
+
+void scmp::Plugins::now_playing(const ScmpNowPlaying *now) const
+{
+    for (const auto &entry : m_entries)
+    {
+        if (entry.now_playing) entry.now_playing(now);
+    }
 }
 
 void scmp::Plugins::menu(const std::string &config_path, const volatile std::sig_atomic_t &interrupted)
