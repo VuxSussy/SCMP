@@ -205,7 +205,7 @@ The Discord plugin shows "Listening to" with the title, artist, album and a prog
 
 1. Create an application at the [Discord Developer Portal](https://discord.com/developers/applications). Its name (for example "scmp") shows on the activity card. Copy its Application ID.
 2. Save the ID: `echo YOUR_APPLICATION_ID > ~/.scmp/discord-client-id` (or set `SCMP_DISCORD_CLIENT_ID`).
-3. Optional: under Rich Presence > Art Assets, upload a picture named `scmp` for the large image.
+3. Optional: the large image is an animated visualizer, [docs/discord/scmp.gif](docs/discord/scmp.gif). To use another picture, put an https URL (GIF, PNG, WebP) or the name of an uploaded Rich Presence art asset in `~/.scmp/discord-image`, or set `SCMP_DISCORD_IMAGE`. Uploaded art assets cannot be animated; [docs/discord/scmp.png](docs/discord/scmp.png) is a still version for them or for the app icon.
 4. Run `./install.sh` (or `make plugins` and copy `build/plugins/discord-presence.dylib` to `~/.scmp/plugins`), then press `P` in scmp and enable `discord-presence`.
 5. In Discord, turn on User Settings > Activity Privacy > "Share your detected activities with others".
 6. Play a song in scmp. Your profile shows it within a few seconds.
